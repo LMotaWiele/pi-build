@@ -1,0 +1,47 @@
+user_prompt:
+clasp run test_all
+
+loop_index: 5
+elapsed_ms: 53270
+tier: unassigned
+
+tools:
+- run_terminal_command success
+- run_terminal_command success
+- run_terminal_command success
+- grep success /home/george-contis/.nvm/versions/node/v24.18.0/lib/node_modules/@google/clasp/build
+- run_terminal_command success
+
+files_written:
+- (none)
+
+index_row: (none)
+current_claim: (none)
+
+last_tool_result:
+PAST appscriptnews-dev
+DEBUG                2026-09-08T14:15:42 unknown         DRY_RUN send: subject
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_send      
+DEBUG                2026-09-08T14:15:42 unknown         DRY_RUN alert: test 
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_alert     
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_cfg_never_throws
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_canonicalUrl
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_canonicalUrl_keeps_load_bearing_query
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_itemId    
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_malformed
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_keeps_decoded_latin1
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_rss_permalink_guid
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_rss_opaque_guid
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_atom
+DEBUG                2026-09-08T14:15:42 unknown         PASS test_parse_rdf 
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_parse_all_fixtures
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_windowFor_tuesday
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_windowFor_monday
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_inWindow  
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_normalizeTitle
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_mojibakeScore_
+DEBUG                2026-09-08T14:15:43 unknown         PASS test_isDuplicate
+DEBUG                2026-09-08T14:15:43 unknown         FAIL test_loadSeen: You do not have permission to call SpreadsheetApp.getActiveSpreadsheet. Required permissions: (https://www.googleapis.com/auth/spreadsheets.currentonl
+
+files_read:
+- (none)

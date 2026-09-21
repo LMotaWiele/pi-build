@@ -1,0 +1,7 @@
+auth.json
+trust.json
+npm/
+*.db
+sessions/
+*.env
+!secrets.example.env

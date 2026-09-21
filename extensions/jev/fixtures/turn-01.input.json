@@ -1,0 +1,279 @@
+{
+  "userPrompt": "# Fix spec \u2014 `test_all` suite-level mail guard, collect start marker, collect timing\n\n**Place at:** `docs/design/fix-spec-test-safety-and-collect-timing.md`\n**Audience:** coding agent. `src/Test.gs` + `src/Collect.gs` edits, an optional `src/Diag.gs` addition, and a one-row append to an existing note. No new `.md` beyond this one.\n**Read first:** `AGENTS.md`, `.agent/notes/gotchas-apps-script.md`, `docs/design/fix-spec-post-first-run.md` \u00a73\u2013\u00a75, this file.\n**Status:** Ready for implementation\n**Date:** 2026-09-08\n\n**What changed since `fix-spec-post-first-run.md`.** \u00a74 and \u00a75 of that spec are **already implemented** in `src/Test.gs`. `test_invariant_collect_never_throws` stubs `fetchFeeds`, `appendPool_`, `prunePool_`, `pruneSeen_`, `writeHealth_`, `loadPool`, `loadSeen`, `poolRowCount_`, `deletePoolMojibake_` and restores in `finally`. `test_loadSeen` / `test_recordSeen` bracket `getLastRow()` and call `_deleteAddedRows_` in `finally`. `test_send` / `test_alert` return `'SKIP'` when `DRY_RUN === 'false'`, and `test_all` counts skips separately. Do not re-implement any of that.\n\nThe instruction **\"Do not run `test_all`\"** in `docs/design/fix-spec-encoding-and-keys.md` \u00a74 and `docs/design/fix-spec-model-and-preview.md` \u00a74 is now **stale**. It was correct when `test_invariant_collect_never_throws` hit 19 live feeds. It is no longer the reason to hesitate. \u00a75 of this spec records that.\n\n**Why this spec exists.** Two live conditions the existing tests and instrumentation do not cover:\n\n1. `DRY_RUN` is now `'false'` and `RECIPIENT_EMAIL` holds the client address. Mail suppression in the suite is per-test: each test that can reach `send` / `alert` opts in by wrapping itself in `_withNoMail_`. That is a convention. One test added without the wrapper mails the client from a test run. The blast radius changed on 2026-09-07; the mechanism did not.\n2. Three `collect` executions timed out. `appendPool_` and `writeHealth_` are both at the end of the `try`, and a hard execution timeout is not an exception \u2014 the `catch` never runs. A timed-out collect therefore appends nothing, writes no health row, and is indistinguishable on the `health` tab from a trigger that never fired and from a `collect skipped: lock held` return.\n\n**Out of scope: attaching a GCP project.** Cloud Logging is the permanent fix for (2) \u2014 it captures `console.log` emitted before a timeout kills the run, which the Sheet structurally cannot. It is deferred because changing the associated GCP project invalidates the script's authorization and puts the six installable triggers at risk, and the triggers are the product. Gate: after a full week of clean weekday sends, with `setup()` re-run immediately afterwards and a `collect` health row confirmed within the hour. \u00a73 of this spec is the interim instrument and stays useful afterwards (it is Sheet-visible without opening Cloud Console).\n\n---\n\n## 1. `src/Test.gs` \u2014 suite-level mail guard\n\n### 1.1 The problem\n\n`_withNoMail_` is applied by four tests: `test_run`, `test_invariant_run_never_throws`, `test_invariant_zero_items_alerts_no_email`, `test_invariant_collect_never_throws`. That is currently complete coverage of the tests that can reach `send` / `alert`. It is complete by inspection, not by construction. The failure mode is a future test \u2014 or a future code path inside an existing test \u2014 that reaches `send()` with `DRY_RUN === 'false'`, which mails `RECIPIENT_EMAIL`.\n\nThe gotcha card already records that `test_all` mailed the operator once. That regression was closed by making `alert()` honour `DRY_RUN`. `DRY_RUN` is no longer `'true'`, so that protection is inert.\n\n### 1.2 The fix\n\nInstall the stubs once, around the test loop, and restore in a `finally`. Rebinding a top-level function on the global object rebinds it for every `.gs` file in the execution \u2014 that is exactly the property being relied on, and it is the same mechanism `_withNoMail_` already uses.\n\n**`test_send` and `test_alert` must run before the guard is installed.** They assert on the real `DRY_RUN` branch of the real functions. Under the guard they would assert on the stub and pass vacuously \u2014 a green run proving nothing. Partition the list.\n\n```js\nfunction test_all() {\n  // Assert on the real send()/alert() DRY_RUN branch. These two carry their own\n  // SKIP guard for DRY_RUN === 'false'; they must not run under the suite stub,\n  // which would make their assertions vacuous.\n  var mailTests = [test_send, test_alert];\n\n  var tests = [\n    test_cfg_never_throws,\n    // \u2026existing list, with test_send and test_alert REMOVED\u2026\n    test_invariant_collect_never_throws,\n  ];\n\n  var passed = 0;\n  var failed = 0;\n  var skipped = 0;\n\n  function runOne(fn) {\n    var name = fn.name;\n    try {\n      var result = fn();\n      if (result === 'SKIP') {\n        console.log('SKIP ' + name);\n        skipped++;\n      } else {\n        console.log('PASS ' + name);\n        passed++;\n      }\n    } catch (err) {\n      console.log('FAIL ' + name + ': ' + (err && err.message ? err.message : err));\n      failed++;\n    }\n  }\n\n  for (var m = 0; m < mailTests.length; m++) runOne(mailTests[m]);\n\n  var g = Function('return this')();\n  var origSend = g.send;\n  var origAlert = g.alert;\n  var leaked = { sent: 0, alerted: 0 };\n  g.send = function () {\n    leaked.sent++;\n    console.log('test_all: send() suppressed by suite guard');\n    return false;\n  };\n  g.alert = function (m) {\n    leaked.alerted++;\n    console.log('test_all: alert() suppressed by suite guard: ' + String(m || ''));\n  };\n  try {\n    for (var i = 0; i < tests.length; i++) runOne(tests[i]);\n  } finally {\n    g.send = origSend;\n    g.alert = origAlert;\n  }\n\n  console.log(\n    'suite guard caught ' + leaked.sent + ' send(s), ' + leaked.alerted + ' alert(s)'\n  );\n  // \u2026existing summary line, unchanged in shape, reporting passed / failed / skipped\u2026\n}\n```\n\n### 1.3 Requirements on the implementation\n\n- **Preserve the existing test order** within `tests`, minus the two moved entries. Order is not load-bearing for correctness, but a reordered list makes the log diff unreadable against previous runs.\n- **Preserve the existing summary line's format.** Add the guard-count line before or after it; do not fold the counts into it.\n- The `finally` is not optional. Leaving `send` stubbed would disable delivery for any later function run in the same execution.\n- `_withNoMail_` stays exactly as it is. Nested inside the suite guard it captures the stub as \"original\" and restores the stub \u2014 idempotent and correct. Do not delete it, do not remove it from the four tests that use it. It is what makes those tests pass when run **individually** from the editor dropdown, where the suite guard does not exist.\n- Do not stub `MailApp`. Rebinding a built-in service global is unsupported and would make the tests prove nothing about production.\n- Do not add a `DRY_RUN` check to `test_all` itself, and **do not flip `DRY_RUN` to run the suite**. A flipped-and-forgotten property means no briefing at 07:00 and the client finds out first. The whole point of the guard is that the suite is safe at `DRY_RUN === 'false'`.\n\n### 1.4 Expected result\n\n`leaked.sent` and `leaked.alerted` should both be **0** on a clean run: every test that can reach those functions already wraps itself. A non-zero count is the finding \u2014 it names a test whose own stubbing is missing, and the `console.log` line sits directly under that test's PASS line in the log. Report the count; do not \"fix\" it by deleting the guard.\n\n---\n\n## 2. `src/Collect.gs` \u2014 start marker\n\n### 2.1 Placement\n\nImmediately after the two prunes, before `deletePoolMojibake_`:\n\n```js\nvar health = blankHealth_('collect', now);\ntry {\n  prunePool_(now);\n  pruneSeen_(now);\n  writeHealth_(blankHealth_('collect-start', now));   // survives a timeout; see \u00a72.3\n  var nMojibake = deletePoolMojibake_();\n  \u2026\n```\n\n**A separate `blankHealth_` call, not the `health` object.** `health` accumulates counters and is written once at the end. Writing it twice would either emit a half-populated duplicate of the real row or require mutating and re-appending, which `writeHealth_` does not support.\n\n**After the prunes, not before.** A start marker that precedes `prunePool_` would claim the execution reached `fetchFeeds` when it may have died in the prune. The prunes are also a plausible timeout site given pool size, so bracketing them is the point.\n\n### 2.2 `kind` value\n\nUse the literal `'collect-start'`. Read `blankHealth_` before writing this \u2014 confirm that a row built with an unfamiliar `kind` renders with the numeric columns blank or zero rather than throwing, and that `writeHealth_` does not validate `kind` against an allow-list. If it does validate, extend the allow-list; do not reuse `'collect'`, which would make start rows and completion rows indistinguishable and break the pairing in \u00a74.\n\n### 2.3 What this buys\n\n| Health tab shows | Meaning |\n|---|---|\n| `collect-start` then `collect`, same hour | Normal execution |\n| `collect-start`, no matching `collect` | **Timeout** (or an uncaught kill), timestamped to the minute it started |\n| Neither row | Trigger did not fire, or `tryLock` returned early (console-only, by design) |\n\nThose three were previously one indistinguishable symptom. The lock-skip branch stays console-only per `fix-spec-encoding-and-keys.md` \u00a73 \u2014 do not add a health row there. A lock skip is not a collect, and it is now distinguishable anyway: it produces neither row, while a timeout produces the first.\n\n### 2.4 Cost\n\n24 extra `health` rows per day, one `appendRow` each (~0.5\u20131 s inside a 360 s budget). Nothing prunes the `health` tab today, so this roughly doubles its growth rate. Accepted for now; a `pruneHealth_` is a separate, later change and is **not** in scope here. Do not add one, and do not add a script property to gate the marker.\n\n---\n\n## 3. `src/Collect.gs` \u2014 phase timing\n\n### 3.1 Instrument three phases\n\nWall-clock brackets only. No profiler, no per-feed timing.\n\n```js\nvar tFetch = Date.now();\nvar fetched = fetchFeeds(FEEDS);\nvar msFetch = Date.now() - tFetch;\nconsole.log('collect ms fetch=' + msFetch);\n```\n\n```js\nvar tDedup = Date.now();\n// \u2026existing parse loop, loadPool/loadSeen, gap detection, survivor loop, unchanged\u2026\nvar msDedup = Date.now() - tDedup;\nconsole.log('collect ms dedup=' + msDedup);\n```\n\n```js\nvar tAppend = Date.now();\nappendPool_(survivors, now);\nhealth.poolSize = poolRowCount_();\nvar msAppend = Date.now() - tAppend;\nconsole.log('collect ms append=' + msAppend);\n```\n\nThen extend the existing `notes` assembly \u2014 do not replace it:\n\n```js\nvar notes = [];\nif (nMojibake) notes.push('dropped mojibake: ' + nMojibake);\nif (droppedDates) notes.push('dropped dateless: ' + droppedDates);\nnotes.push('ms fetch/dedup/append: ' + msFetch + '/' + msDedup + '/' + msAppend);\nif (notes.length) health.notes = notes.join('; ');\n```\n\n`notes` is assembled before `appendPool_` in the current code. Move the `notes.push` for timings and the `health.notes` assignment to **after** the append block so `msAppend` exists. Leave the two existing `notes.push` calls where they are; only the join and assignment move.\n\n### 3.2 Both channels, deliberately\n\nThe `console.log` lines survive a timeout in the editor Execution log for manual runs, and will survive one in Cloud Logging once GCP is attached. The `health.notes` string only lands on completed runs, but it is readable on the Sheet without opening anything else, and it accumulates a baseline. When a timeout does occur, the neighbouring completed rows show what the phase costs were at that pool size, which is the comparison that identifies the culprit.\n\n### 3.3 The hypothesis being tested\n\n`fetchFeeds` is a single `UrlFetchApp.fetchAll` and is unlikely to be the cost. The candidates are `deletePoolMojibake_` (row-by-row deletion), `prunePool_`, and the survivor loop, which runs trigram Dice for every parsed item against `sameDayPoolTitles_` \u2014 a set that grows through the day. That last one degrades with pool size, which fits timeouts clustering rather than appearing at random. `msDedup` covers the survivor loop; `deletePoolMojibake_` and the prunes fall outside all three brackets by design, so if `msFetch + msDedup + msAppend` is far short of the elapsed execution time shown in the Executions sidebar, the cost is in the unbracketed prefix and that is the next thing to bracket. Do not pre-emptively bracket it now \u2014 one round of data first.\n\n**Do not change any dedup, prune, or mojibake logic in this spec.** Measure first. `LIMITS.titleSimilarity` stays 0.82 and `src/Config.gs` is not edited.\n\n---\n\n## 4. `src/Diag.gs` \u2014 pairing helper (optional, non-blocking)\n\nSkip this if \u00a71\u2013\u00a73 are pushed and verified and there is no time left. Manually pairing ~24 start rows against ~24 completion rows per day on the Sheet is tedious enough that it will not get done, which is the only argument for it.\n\n```js\n/** Unpaired collect-start rows in the last `days` (default 3). Read-only. */\nfunction diag_collect_timeouts() {\n  var days = 3;\n  var sh = sheet_(SHEET.healthTab);\n  var last = sh.getLastRow();\n  if (last < 2) {\n    console.log('health tab empty');\n    return;\n  }\n  var n = last - 1;\n  var ts = sh.getRange(2, 1, n, 1).getValues();\n  var kinds = sh.getRange(2, 2, n, 1).getValues();\n  var cutoff = Date.now() - days * 864e5;\n  var openStart = null;\n  var unpaired = 0;\n  for (var i = 0; i < n; i++) {\n    var kind = String(kinds[i][0] || '');\n    var when = ts[i][0];\n    var t = when instanceof Date ? when.getTime() : Date.parse(String(when));\n    if (!t || t < cutoff) continue;\n    if (kind === 'collect-start') {\n      if (openStart) {\n        console.log('unpaired collect-start: ' + openStart);\n        unpaired++;\n      }\n      openStart = String(when);\n    } else if (kind === 'collect') {\n      openStart = null;\n    }\n  }\n  if (openStart) console.log('unpaired collect-start (most recent, may be in flight): ' + openStart);\n  console.log('unpaired collect-start rows in last ' + days + 'd: ' + unpaired);\n}\n```\n\nAssumes `health` column A is `timestamp` and column B is `kind` per `HEALTH_HEADERS_`. **Read the header row and confirm before trusting the column indices** \u2014 do not hardcode against this spec's assumption. The most recent open start is reported separately because a collect in flight looks identical to a timeout until it finishes.\n\nZero-arg, no writes, not added to `test_all`.\n\n---\n\n## 5. Note maintenance\n\nAppend **one** row to the table in `.agent/notes/gotchas-apps-script.md` and update its `Last updated:` front-matter field:\n\n| If | Then |\n|---|---|\n| `collect` hour missing from `health` | Three causes, now distinguishable: `collect-start` with no `collect` = timeout; neither row = trigger did not fire **or** `tryLock` returned (console-only); both rows = normal. Timing is in `health.notes` as `ms fetch/dedup/append`. |\n\nAlso append one line to `docs/NOTES.md` recording that `fix-spec-post-first-run.md` \u00a74/\u00a75 are implemented and that the \"Do not run `test_all`\" instruction in `fix-spec-encoding-and-keys.md` \u00a74 and `fix-spec-model-and-preview.md` \u00a74 is superseded by the \u00a71 suite guard.\n\n**Do not edit the two older specs themselves.** They are dated design records; superseding happens in notes, per `.agent/notes/README.md` (\"supersede, don't delete\").\n\n---\n\n## 6. Verify, in order\n\n`clasp push`. No git commit, no PR.\n\n1. **Timing.** Do not start this within 90 minutes of 07:00 BRT. `test_all` writes to `seen` (and cleans up); an execution killed mid-`test_recordSeen` leaves an orphan row, and the hour before the send is the wrong time to find out.\n2. Record `getLastRow()` for `pool`, `seen`, and `health` before anything.\n3. Run `test_all` from the editor. `DRY_RUN` stays `'false'` \u2014 do not touch it.\n   - **Zero emails at `RECIPIENT_EMAIL`, `ALERT_EMAIL`, or `PREVIEW_EMAIL`.** This is the primary acceptance criterion.\n   - `suite guard caught 0 send(s), 0 alert(s)`.\n   - `SKIP test_send` and `SKIP test_alert` appear (expected at `DRY_RUN === 'false'`), and both are counted as skips, not passes.\n   - `pool` and `health` row counts unchanged. `seen` row count unchanged.\n4. Run each of `test_send`, `test_alert`, `test_run`, `test_invariant_collect_never_throws` **individually** from the dropdown. Each must behave as before \u2014 this is the check that the suite guard did not become load-bearing for tests that must also work standalone.\n5. Run `collectNow` manually once. Expect a `collect-start` row and a `collect` row, in that order, with `health.notes` carrying `ms fetch/dedup/append: N/N/N`. Record those three numbers \u2014 they are the baseline.\n6. Wait for one triggered hourly collect. Confirm the same pair appears without manual intervention.\n7. (If \u00a74 was implemented.) Run `diag_collect_timeouts`. Expect `0` unpaired for any period after the push, and note that it cannot retroactively see the three timeouts already observed \u2014 those predate the marker.\n8. After 24 hours, compare `ms dedup` across the day's rows. A monotonic climb tracking `poolSize` confirms the \u00a73.3 hypothesis and sets up the next change. Report the numbers; do not act on them in this spec.\n\n---\n\n## 7. Rollback\n\n- **\u00a71** \u2014 restore `test_send` / `test_alert` to the single `tests` array and delete the guard block. Nothing else depends on it.\n- **\u00a72** \u2014 delete the one `writeHealth_(blankHealth_('collect-start', now))` line. Existing `collect-start` rows are inert; leave them, they are evidence.\n- **\u00a73** \u2014 delete the three brackets and the `notes.push`; move the `health.notes` assignment back above `appendPool_`.\n\nThe three are independent. \u00a71 touching `src/Test.gs` only and \u00a72/\u00a73 touching `src/Collect.gs` only means a failure in either does not implicate the other.\n\n---\n\n## 8. Do not\n\n- Do not edit `src/Config.gs`, including `LIMITS.titleSimilarity` and `LIMITS.poolDays`.\n- Do not set `DRY_RUN` to `'true'` at any point, for any reason, including to run the suite.\n- Do not write a health row from the `tryLock` early-return branch.\n- Do not add `pruneHealth_` or any other `health`-tab pruner in this pass.\n- Do not change dedup, prune, clustering, or mojibake logic. This spec measures; it does not optimise.\n- Do not reassign `MailApp`, `SpreadsheetApp`, `LockService`, or any built-in service global.\n- Do not add `diag_*` to `test_all`.\n- Do not attach a GCP project as part of this work. See the gate in the header.\n- Do not add `.md` files beyond this one. `docs/NOTES.md` and `.agent/notes/gotchas-apps-script.md` already exist; \u00a75 appends to them.\n- Do not `import` / `export` / `require` in `src/`.\n- Do not call `new Date()` below `runNow()` / `collectNow()`. The clock stays injected \u2014 note that `Date.now()` in \u00a73 measures elapsed duration, not wall-clock time, and does not violate this.\n- Do not commit or push to git. `clasp push` only.\n\n---\n\n## Key decisions\n\n1. **Suite-level guard rather than auditing per-test coverage.** Per-test coverage is complete today. It is complete by inspection, and inspection has to be repeated every time a test is added, at a moment when the cost of missing it is mail to the client. A wrapper around the loop makes it structural. The guard's leak counter preserves the diagnostic value of the per-test convention: if a test needed the guard, the log says which one.\n2. **`test_send` / `test_alert` run outside the guard.** They exist to assert on the real `DRY_RUN` branch. Under the stub they would assert `false === false` against the stub's return and pass without testing anything. Partitioning the list is two lines; making the tests aware of the guard would couple them to `test_all` and break standalone dropdown runs.\n3. **A second health row, not an updated one.** Updating the start row on completion requires locating it by timestamp, handling the not-found case, and a second Sheet round trip. Two rows with distinct `kind` values are append-only, match how the tab is already read, and pair trivially.\n4. **Marker after the prunes.** It must claim only what it can prove. Placed before them it would assert progress the execution may not have made, and the prunes are themselves a timeout candidate.\n5. **Timing in `notes` and console, not a new column.** A new `health` column means an `ensureTab_` header change against a tab with existing data rows, which `ensureTab_` correctly refuses (it appends to `mismatches` rather than relabelling). `notes` is already free-text and already carries `dropped mojibake` / `dropped dateless` in the same style.\n6. **GCP deferred, not rejected.** Cloud Logging is the only surface that captures output from a killed execution. The marker gives most of that answer at zero authorization risk, this week. When GCP lands, the marker stays useful \u2014 it is readable on the Sheet alongside the counters it describes, without a second console.\n\n## References\n\n- `src/Test.gs` \u2014 `test_all`, `_withNoMail_`, `_withEmptyPoolNoHealth_`, `_deleteAddedRows_`, `test_send`, `test_alert`, `test_invariant_collect_never_throws`\n- `src/Collect.gs` \u2014 `collect`, `collectNow`, the `tryLock` early return, `notes` assembly\n- `src/Setup.gs` \u2014 `HEALTH_HEADERS_`, `ensureTab_`, `setup`\n- `src/Diag.gs` \u2014 existing `diag_*` conventions (zero-arg, no writes, never calls `run()`)\n- `docs/design/fix-spec-post-first-run.md` \u00a73\u2013\u00a75 (implemented; \u00a710 acceptance list is the model for \u00a76 here), \u00a711\n- `docs/design/fix-spec-encoding-and-keys.md` \u00a73 (lock-skip branch), \u00a74 (stale `test_all` warning)\n- `docs/design/fix-spec-model-and-preview.md` \u00a74 (stale `test_all` warning)\n- `.agent/notes/gotchas-apps-script.md` \u2014 `test_all` mailed the operator; test stub rebinding; \u00a75 appends here\n- `AGENTS.md` \u2014 rules 5, 6, 7, 8, 9, 10",
+  "loopIndex": 18,
+  "elapsedMs": 364600,
+  "tier": "unassigned",
+  "tools": [
+    {
+      "name": "todo_write",
+      "outcome": "success"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/INDEX.md"
+    },
+    {
+      "name": "search_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "use_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md"
+    },
+    {
+      "name": "search_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "use_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "use_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "use_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "list_dir",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/design"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Collect.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/NOTES.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/README.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/NOTES.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Setup.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/rebuild-handover.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "run_terminal_command",
+      "outcome": "success"
+    },
+    {
+      "name": "run_terminal_command",
+      "outcome": "success"
+    },
+    {
+      "name": "todo_write",
+      "outcome": "success"
+    },
+    {
+      "name": "write",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/design/fix-spec-test-safety-and-collect-timing.md"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Collect.gs"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Collect.gs"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md"
+    },
+    {
+      "name": "search_replace",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/NOTES.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Collect.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Test.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/src/Diag.gs"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md"
+    },
+    {
+      "name": "read_file",
+      "outcome": "success",
+      "path": "/home/george-contis/Documents/appScriptNews/docs/NOTES.md"
+    },
+    {
+      "name": "grep",
+      "outcome": "success"
+    },
+    {
+      "name": "todo_write",
+      "outcome": "success"
+    },
+    {
+      "name": "search_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "run_terminal_command",
+      "outcome": "success"
+    },
+    {
+      "name": "use_tool",
+      "outcome": "success"
+    },
+    {
+      "name": "todo_write",
+      "outcome": "success"
+    }
+  ],
+  "filesWritten": [
+    "/home/george-contis/Documents/appScriptNews/docs/design/fix-spec-test-safety-and-collect-timing.md",
+    "/home/george-contis/Documents/appScriptNews/src/Test.gs",
+    "/home/george-contis/Documents/appScriptNews/src/Collect.gs",
+    "/home/george-contis/Documents/appScriptNews/src/Diag.gs",
+    "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md",
+    "/home/george-contis/Documents/appScriptNews/docs/NOTES.md"
+  ],
+  "indexRow": "(none)",
+  "currentClaim": "(none)",
+  "lastToolResult": "{\"type\": \"Todo\", \"todo-update\": {\"summary_for_prompt\": \"- [completed] read: Read required notes, specs, and current Test/Collect/Diag/Setup code\\n- [completed] write-spec: Write docs/design/fix-spec-test-safety-and-collect-timing.md\\n- [completed] test-guard: Implement suite-level mail guard in src/Test.gs\\n- [completed] collect-marker: Add collect-start health marker in src/Collect.gs\\n- [completed] collect-timing: Add phase timing in src/Collect.gs\\n- [completed] diag: Add optional diag_collect_timeouts in src/Diag.gs\\n- [completed] notes: Append gotchas-apps-script.md and docs/NOTES.md\\n- [completed] push: clasp push (no git commit)\\n\", \"todos\": [{\"content\": \"Read required notes, specs, and current Test/Collect/Diag/Setup code\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Write docs/design/fix-spec-test-safety-and-collect-timing.md\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Implement suite-level mail guard in src/Test.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Add collect-start health marker in src/Collect.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Add phase timing in src/Collect.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Add optional diag_collect_timeouts in src/Diag.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"Append gotchas-apps-script.md and docs/NOTES.md\", \"priority\": \"medium\", \"status\": \"completed\"}, {\"content\": \"clasp push (no git commit)\", \"priority\": \"medium\", \"status\": \"completed\"}], \"state\": {\"todos\": {\"read\": {\"content\": \"Read required notes, specs, and current Test/Collect/Diag/Setup code\", \"priority\": \"medium\", \"status\": \"completed\"}, \"write-spec\": {\"content\": \"Write docs/design/fix-spec-test-safety-and-collect-timing.md\", \"priority\": \"medium\", \"status\": \"completed\"}, \"test-guard\": {\"content\": \"Implement suite-level mail guard in src/Test.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, \"collect-marker\": {\"content\": \"Add collect-start health marker in src/Collect.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, \"collect-timing\": {\"content\": \"Add phase timing in src/Collect.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, \"diag\": {\"content\": \"Add optional diag_collect_timeouts in src/Diag.gs\", \"priority\": \"medium\", \"status\": \"completed\"}, \"notes\": {\"content\": \"Append gotchas-apps-script.md and docs/NOTES.md\", \"priority\": \"medium\", \"status\": \"completed\"}, \"push\": {\"content\": \"clasp push (no git commit)\", \"priority\": \"medium\", \"status\": \"completed\"}}}}}",
+  "filesRead": [
+    "/home/george-contis/Documents/appScriptNews/.agent/notes/INDEX.md",
+    "/home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md",
+    "/home/george-contis/Documents/appScriptNews/src/Test.gs",
+    "/home/george-contis/Documents/appScriptNews/src/Collect.gs",
+    "/home/george-contis/Documents/appScriptNews/src/Diag.gs",
+    "/home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md",
+    "/home/george-contis/Documents/appScriptNews/docs/NOTES.md",
+    "/home/george-contis/Documents/appScriptNews/.agent/notes/README.md",
+    "/home/george-contis/Documents/appScriptNews/src/Setup.gs",
+    "/home/george-contis/Documents/appScriptNews/.agent/notes/rebuild-handover.md"
+  ]
+}

@@ -1,0 +1,706 @@
+/**
+ * SQLite telemetry and the shared compaction epoch.
+ * Opening the database is lazy. A failure here must not take an extension down.
+ */
+
+import { createHash, randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+export function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+/**
+ * jiti loads this module once per extension (`moduleCache: false`).
+ * Every counter the extensions share has to live on the process global.
+ */
+const TELEMETRY_KEY = Symbol.for("pi-build.telemetry");
+
+interface TelemetryBag {
+  epoch: number;
+  turn: TurnState;
+  openNote: OpenNoteState | null;
+  memoryBlock: string;
+  lastRecap: string;
+  sawAbort: boolean;
+  indexTopics: string[];
+  filesWritten: string[];
+  db: Db | null;
+  dbFailed: boolean;
+  recordedIds: Set<string>;
+  annotations: Map<string, Partial<ToolCallRow>>;
+  startedAt: Map<string, number>;
+  attached: boolean;
+  turnUsage: TurnUsage;
+  turnReported: boolean;
+  sessionCost: number;
+  activeTier: string;
+  activeModel: string;
+  messageStarted: Map<string, number>;
+}
+
+function emptyUsage(): TurnUsage {
+  return { calls: 0, prompt: 0, cached: 0, completion: 0, reasoning: 0, cost: 0 };
+}
+
+function freshTurn(): TurnState {
+  return {
+    sessionId: "",
+    turnId: "",
+    loopIndex: 0,
+    started: Date.now(),
+    consecutiveFailures: 0,
+    reads: 0,
+    edits: 0,
+    prompt: "",
+  };
+}
+
+function freshBag(): TelemetryBag {
+  return {
+    epoch: 0,
+    turn: freshTurn(),
+    openNote: null,
+    memoryBlock: "",
+    lastRecap: "",
+    sawAbort: false,
+    indexTopics: [],
+    filesWritten: [],
+    db: null,
+    dbFailed: false,
+    recordedIds: new Set(),
+    annotations: new Map(),
+    startedAt: new Map(),
+    attached: false,
+    turnUsage: emptyUsage(),
+    turnReported: false,
+    sessionCost: 0,
+    activeTier: "unassigned",
+    activeModel: "",
+    messageStarted: new Map(),
+  };
+}
+
+function bag(): TelemetryBag {
+  const g = globalThis as typeof globalThis & { [TELEMETRY_KEY]?: TelemetryBag };
+  if (!g[TELEMETRY_KEY]) g[TELEMETRY_KEY] = freshBag();
+  return g[TELEMETRY_KEY];
+}
+
+/** Bump when compaction drops context. A second call in the same event still invalidates readers. */
+export function markContextDropped(): number {
+  const state = bag();
+  state.epoch += 1;
+  return state.epoch;
+}
+
+export function contextEpoch(): number {
+  return bag().epoch;
+}
+
+export function resetEpochForTests(): void {
+  bag().epoch = 0;
+}
+
+export interface BoundSnapshot {
+  sessionId: string;
+  turnId: string;
+  loopIndex: number;
+  elapsedMs: number;
+  consecutiveFailures: number;
+  reads: number;
+  edits: number;
+}
+
+interface TurnState {
+  sessionId: string;
+  turnId: string;
+  loopIndex: number;
+  started: number;
+  consecutiveFailures: number;
+  reads: number;
+  edits: number;
+  prompt: string;
+}
+
+export interface OpenNoteState {
+  path: string;
+  topic: string;
+  currentClaim: string;
+  preCommitted: { if: string; then: string }[];
+}
+
+export function setOpenNote(note: OpenNoteState | null): void {
+  bag().openNote = note;
+}
+
+export function getOpenNote(): OpenNoteState | null {
+  return bag().openNote;
+}
+
+export function setMemoryBlock(text: string): void {
+  bag().memoryBlock = text;
+}
+
+export function getMemoryBlock(): string {
+  return bag().memoryBlock;
+}
+
+export function setLastRecap(text: string): void {
+  bag().lastRecap = text;
+}
+
+export function getLastRecap(): string {
+  return bag().lastRecap;
+}
+
+export function noteRunAborted(): void {
+  bag().sawAbort = true;
+}
+
+export function sawRunAborted(): boolean {
+  return bag().sawAbort;
+}
+
+export function setIndexTopics(topics: string[]): void {
+  bag().indexTopics = topics;
+}
+
+export function getIndexTopics(): string[] {
+  return bag().indexTopics.slice();
+}
+
+export function noteWrittenFile(filePath: string): void {
+  const files = bag().filesWritten;
+  if (!files.includes(filePath)) files.push(filePath);
+}
+
+export function writtenFiles(): string[] {
+  return bag().filesWritten.slice();
+}
+
+export function beginUserTurn(sessionId: string, prompt: string): void {
+  const state = bag();
+  state.turn = {
+    sessionId,
+    turnId: randomUUID(),
+    loopIndex: 0,
+    started: Date.now(),
+    consecutiveFailures: 0,
+    reads: 0,
+    edits: 0,
+    prompt,
+  };
+  state.openNote = null;
+  state.filesWritten.length = 0;
+  state.turnUsage = emptyUsage();
+  state.turnReported = false;
+}
+
+export function currentPrompt(): string {
+  return bag().turn.prompt;
+}
+
+/** Start a user-prompt turn when the text changes. Returns true only on a new prompt. */
+export function notePrompt(sessionId: string, prompt: string): boolean {
+  const turn = bag().turn;
+  if (turn.turnId && prompt === turn.prompt) return false;
+  beginUserTurn(sessionId, prompt);
+  return true;
+}
+
+export function turnSnapshot(): BoundSnapshot {
+  const turn = bag().turn;
+  return {
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    loopIndex: turn.loopIndex,
+    elapsedMs: Date.now() - turn.started,
+    consecutiveFailures: turn.consecutiveFailures,
+    reads: turn.reads,
+    edits: turn.edits,
+  };
+}
+
+export function bumpLoopIndex(): number {
+  const turn = bag().turn;
+  turn.loopIndex += 1;
+  return turn.loopIndex;
+}
+
+export function noteToolOutcome(isError: boolean, countsAsRead: boolean, countsAsEdit: boolean): void {
+  const turn = bag().turn;
+  if (isError) turn.consecutiveFailures += 1;
+  else turn.consecutiveFailures = 0;
+  if (countsAsRead) turn.reads += 1;
+  if (countsAsEdit) turn.edits += 1;
+}
+
+export function readPiSettings(): Record<string, unknown> {
+  const dir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
+  const candidates = [process.env.PI_BUILD_SETTINGS, path.join(dir, "settings.json")].filter(
+    (value): value is string => Boolean(value),
+  );
+  for (const file of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+  }
+  return {};
+}
+
+export function settingsBlock(settings: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = settings[key];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+/** Absent block or absent enabled flag means the extension loads. */
+export function extensionEnabled(settings: Record<string, unknown>, key: string): boolean {
+  const block = settings[key];
+  if (block === undefined) return true;
+  if (!block || typeof block !== "object" || Array.isArray(block)) return true;
+  return (block as { enabled?: boolean }).enabled !== false;
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id INTEGER PRIMARY KEY,
+  ts INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  loop_index INTEGER,
+  tool_name TEXT NOT NULL,
+  arguments TEXT NOT NULL,
+  path TEXT,
+  result_bytes INTEGER,
+  elapsed_ms INTEGER,
+  outcome TEXT,
+  blocked_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tool_path ON tool_calls(session_id, path);
+
+CREATE TABLE IF NOT EXISTS inference_calls (
+  id INTEGER PRIMARY KEY,
+  ts INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  loop_index INTEGER,
+  tier TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_tokens INTEGER,
+  cached_tokens INTEGER,
+  completion_tokens INTEGER,
+  reasoning_tokens INTEGER,
+  ttft_ms INTEGER,
+  elapsed_ms INTEGER,
+  cost_usd REAL
+);
+`;
+
+export interface ToolCallRow {
+  toolCallId?: string;
+  toolName: string;
+  arguments: unknown;
+  path?: string | null;
+  resultBytes?: number | null;
+  elapsedMs?: number | null;
+  outcome: "success" | "error" | "blocked" | "deduped";
+  blockedBy?: string | null;
+}
+
+export interface InferenceRow {
+  tier: string;
+  model: string;
+  promptTokens?: number | null;
+  cachedTokens?: number | null;
+  completionTokens?: number | null;
+  reasoningTokens?: number | null;
+  ttftMs?: number | null;
+  elapsedMs?: number | null;
+  costUsd?: number | null;
+}
+
+interface Db {
+  exec(sql: string): void;
+  prepare(sql: string): { run(...args: unknown[]): unknown };
+}
+
+export function telemetryPath(): string {
+  if (process.env.PI_BUILD_TELEMETRY_DB) return process.env.PI_BUILD_TELEMETRY_DB;
+  const dir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
+  return path.join(dir, "telemetry.db");
+}
+
+function database(): Db | null {
+  const state = bag();
+  if (state.dbFailed) return null;
+  if (state.db) return state.db;
+  try {
+    const file = telemetryPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const opened = new DatabaseSync(file);
+    opened.exec(SCHEMA);
+    state.db = opened;
+    return state.db;
+  } catch (err) {
+    state.dbFailed = true;
+    console.error("[telemetry] database unavailable", err);
+    return null;
+  }
+}
+
+export function resetTelemetryForTests(): void {
+  const g = globalThis as typeof globalThis & { [TELEMETRY_KEY]?: TelemetryBag };
+  g[TELEMETRY_KEY] = freshBag();
+}
+
+export function annotateCall(toolCallId: string, patch: Partial<ToolCallRow>): void {
+  const annotations = bag().annotations;
+  annotations.set(toolCallId, { ...annotations.get(toolCallId), ...patch });
+}
+
+export function recordToolCall(row: ToolCallRow): void {
+  const recordedIds = bag().recordedIds;
+  if (row.toolCallId && recordedIds.has(row.toolCallId)) return;
+  if (row.toolCallId) recordedIds.add(row.toolCallId);
+  const snap = turnSnapshot();
+  const store = database();
+  if (!store) return;
+  try {
+    store
+      .prepare(
+        `INSERT INTO tool_calls
+          (ts, session_id, turn_id, loop_index, tool_name, arguments, path, result_bytes, elapsed_ms, outcome, blocked_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        Date.now(),
+        snap.sessionId,
+        snap.turnId,
+        snap.loopIndex,
+        row.toolName,
+        JSON.stringify(row.arguments ?? {}),
+        row.path ?? null,
+        row.resultBytes ?? null,
+        row.elapsedMs ?? null,
+        row.outcome,
+        row.blockedBy ?? null,
+      );
+  } catch (err) {
+    console.error("[telemetry] tool_calls insert failed", err);
+  }
+}
+
+interface TurnUsage {
+  calls: number;
+  prompt: number;
+  cached: number;
+  completion: number;
+  reasoning: number;
+  cost: number;
+}
+
+function addTurnUsage(row: InferenceRow): void {
+  const turnUsage = bag().turnUsage;
+  turnUsage.calls += 1;
+  turnUsage.prompt += row.promptTokens ?? 0;
+  turnUsage.cached += row.cachedTokens ?? 0;
+  turnUsage.completion += row.completionTokens ?? 0;
+  turnUsage.reasoning += row.reasoningTokens ?? 0;
+  turnUsage.cost += row.costUsd ?? 0;
+}
+
+/** One line for the session log. A second call in the same turn returns null. */
+export function consumeTurnCostLine(tier: string): string | null {
+  const state = bag();
+  if (state.turnReported) return null;
+  state.turnReported = true;
+  const turnUsage = state.turnUsage;
+  const cache = turnUsage.prompt > 0 ? (100 * turnUsage.cached) / turnUsage.prompt : 0;
+  const reasoning = turnUsage.completion > 0 ? (100 * turnUsage.reasoning) / turnUsage.completion : 0;
+  state.sessionCost += turnUsage.cost;
+  const line = `[cost] tier=${tier} calls=${turnUsage.calls} prompt=${turnUsage.prompt} cache=${cache.toFixed(1)}% completion=${turnUsage.completion} reasoning=${reasoning.toFixed(1)}% turn=$${turnUsage.cost.toFixed(4)} session=$${state.sessionCost.toFixed(4)}`;
+  state.turnUsage = emptyUsage();
+  return line;
+}
+
+export function resolvedResultBytes(annotation: { resultBytes?: number | null } | undefined, content: unknown): number {
+  if (annotation && typeof annotation.resultBytes === "number") return annotation.resultBytes;
+  return textOf(content).length;
+}
+
+export function recordInference(row: InferenceRow): void {
+  addTurnUsage(row);
+  const snap = turnSnapshot();
+  const store = database();
+  if (!store) return;
+  try {
+    store
+      .prepare(
+        `INSERT INTO inference_calls
+          (ts, session_id, turn_id, loop_index, tier, model, prompt_tokens, cached_tokens, completion_tokens, reasoning_tokens, ttft_ms, elapsed_ms, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        Date.now(),
+        snap.sessionId,
+        snap.turnId,
+        snap.loopIndex,
+        row.tier,
+        row.model,
+        row.promptTokens ?? null,
+        row.cachedTokens ?? null,
+        row.completionTokens ?? null,
+        row.reasoningTokens ?? null,
+        row.ttftMs ?? null,
+        row.elapsedMs ?? null,
+        row.costUsd ?? null,
+      );
+  } catch (err) {
+    console.error("[telemetry] inference_calls insert failed", err);
+  }
+}
+
+export interface TelemetryHost {
+  on(event: string, handler: (event: Record<string, unknown>, ctx: Record<string, unknown>) => void | Promise<void>): void;
+}
+
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const text = (block as { text?: string }).text;
+      return typeof text === "string" ? text : "";
+    })
+    .join("\n");
+}
+
+function pathOf(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  for (const key of ["path", "target_file", "file_path"]) {
+    if (typeof record[key] === "string") return record[key];
+  }
+  return null;
+}
+
+export function setActiveTier(tier: string, model: string): void {
+  const state = bag();
+  state.activeTier = tier;
+  state.activeModel = model;
+}
+
+export function activeTierName(): string {
+  return bag().activeTier;
+}
+
+/**
+ * One process-wide listener. Later calls are no-ops so every extension can try to attach.
+ * The flag is on the process global because each extension loads its own copy of this file.
+ */
+export function attachTelemetry(pi: TelemetryHost): void {
+  const state = bag();
+  if (state.attached) return;
+  state.attached = true;
+  try {
+    pi.on("agent_start", (_event, ctx) => {
+      const turn = bag().turn;
+      const session = sessionIdOf(ctx);
+      if (turn.sessionId !== session || !turn.turnId) beginUserTurn(session, turn.prompt);
+    });
+    pi.on("message_start", (event) => {
+      const message = event.message as { role?: string; id?: string } | undefined;
+      if (message?.role === "assistant" && message.id) bag().messageStarted.set(message.id, Date.now());
+    });
+    pi.on("message_update", (event) => {
+      const message = event.message as { role?: string; id?: string } | undefined;
+      const messageStarted = bag().messageStarted;
+      if (message?.role === "assistant" && message.id && messageStarted.has(message.id)) {
+        const started = messageStarted.get(message.id)!;
+        if (started > 0) messageStarted.set(message.id, -started);
+      }
+    });
+    pi.on("message_end", (event, ctx) => {
+      const message = event.message as {
+        role?: string;
+        id?: string;
+        usage?: {
+          input?: number;
+          output?: number;
+          cacheRead?: number;
+          reasoning?: number;
+          cost?: { total?: number };
+        };
+        model?: string;
+      } | undefined;
+      if (!message || message.role !== "assistant") return;
+      const current = bag();
+      if (!current.turn.sessionId) beginUserTurn(sessionIdOf(ctx), current.turn.prompt);
+      const loop = bumpLoopIndex();
+      const usage = message.usage ?? {};
+      let ttft: number | null = null;
+      const messageStarted = bag().messageStarted;
+      if (message.id && messageStarted.has(message.id)) {
+        const mark = messageStarted.get(message.id)!;
+        const origin = Math.abs(mark);
+        if (mark < 0) ttft = Date.now() - origin;
+        messageStarted.delete(message.id);
+      }
+      const after = bag();
+      recordInference({
+        tier: after.activeTier,
+        model: message.model || after.activeModel || "unknown",
+        promptTokens: usage.input ?? null,
+        cachedTokens: usage.cacheRead ?? null,
+        completionTokens: usage.output ?? null,
+        reasoningTokens: usage.reasoning ?? null,
+        ttftMs: ttft,
+        elapsedMs: turnSnapshot().elapsedMs,
+        costUsd: usage.cost?.total ?? null,
+      });
+      void loop;
+    });
+    pi.on("tool_execution_start", (event) => {
+      const id = stringField(event, "toolCallId");
+      if (id) bag().startedAt.set(id, Date.now());
+    });
+    pi.on("tool_result", (event) => {
+      const id = stringField(event, "toolCallId");
+      const name = stringField(event, "toolName") || "unknown";
+      const input = event.input;
+      const state = bag();
+      const annotation = id ? state.annotations.get(id) : undefined;
+      const isError = event.isError === true && annotation?.outcome !== "blocked" && annotation?.outcome !== "deduped";
+      const outcome = annotation?.outcome ?? (isError ? "error" : "success");
+      const filePath = annotation?.path ?? pathOf(input);
+      noteToolOutcome(outcome === "error", name === "read" && outcome !== "blocked", name === "edit" || name === "write");
+      const started = id ? state.startedAt.get(id) : undefined;
+      recordToolCall({
+        toolCallId: id,
+        toolName: name,
+        arguments: input ?? {},
+        path: filePath,
+        resultBytes: resolvedResultBytes(annotation, event.content),
+        elapsedMs: started ? Date.now() - started : null,
+        outcome,
+        blockedBy: annotation?.blockedBy ?? null,
+      });
+    });
+    pi.on("turn_end", () => {
+      const line = consumeTurnCostLine(bag().activeTier);
+      if (line) console.error(line);
+    });
+  } catch (err) {
+    console.error("[telemetry] attach failed", err);
+  }
+}
+
+function sessionIdOf(ctx: Record<string, unknown>): string {
+  const manager = ctx.sessionManager as { getSessionId?: () => string } | undefined;
+  try {
+    return manager?.getSessionId?.() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function stringField(event: Record<string, unknown>, key: string): string | undefined {
+  const value = event[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+export function shouldWriteSessionRecap(reason: string, sawAbort: boolean): boolean {
+  return reason === "quit" || sawAbort;
+}
+
+export function explainCommand(prompt: string, model?: string): { bin: string; args: string[] } {
+  const args = ["--mode", "json", "--no-session"];
+  if (model) args.push("--model", model);
+  args.push("--thinking", "off", "--tools", "read", "-p", prompt);
+  return { bin: "pi", args };
+}
+
+export function mergeKnown(existing: string, entries: string[]): string {
+  const seen = new Set(
+    existing
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  const added: string[] = [];
+  for (const entry of entries) {
+    const line = entry.trim();
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    added.push(line);
+  }
+  if (added.length === 0) return existing;
+  const base = existing.replace(/\s*$/, "");
+  return `${base}${base ? "\n" : ""}${added.join("\n")}\n`;
+}
+
+export function knownEntriesFromExplanation(body: string): string[] {
+  const lines: string[] = [];
+  for (const line of body.split("\n")) {
+    const match = line.match(/^known:\s*(.+)$/i);
+    if (match) lines.push(match[1].trim());
+  }
+  return lines;
+}
+
+export interface TierAnswers {
+  single_file_edit: boolean;
+  needs_repo_reasoning: boolean;
+  unfamiliar_stack: boolean;
+  spec_exists: boolean;
+  reversible: boolean;
+}
+
+/** Permissive map. Escalate on doubt. Scout is not selected here. */
+export function selectTier(answers: TierAnswers): "work" | "escalate" {
+  if (answers.needs_repo_reasoning || answers.unfamiliar_stack) return "escalate";
+  if (answers.single_file_edit && answers.spec_exists && answers.reversible) return "work";
+  return "escalate";
+}
+
+export interface BoundConfig {
+  maxLoopDepth: number;
+  maxTurnWallClockMs: number;
+  maxConsecutiveToolFailures: number;
+  noProgressReads: number;
+}
+
+export const DEFAULT_BOUNDS: BoundConfig = {
+  maxLoopDepth: 60,
+  maxTurnWallClockMs: 600_000,
+  maxConsecutiveToolFailures: 3,
+  noProgressReads: 6,
+};
+
+export function boundReason(snapshot: BoundSnapshot, config: BoundConfig = DEFAULT_BOUNDS): string | null {
+  if (snapshot.loopIndex >= config.maxLoopDepth) {
+    return `max loop depth ${config.maxLoopDepth} (loop_index ${snapshot.loopIndex})`;
+  }
+  if (snapshot.elapsedMs >= config.maxTurnWallClockMs) {
+    return `wall clock ${snapshot.elapsedMs}ms >= ${config.maxTurnWallClockMs}ms`;
+  }
+  if (snapshot.consecutiveFailures >= config.maxConsecutiveToolFailures) {
+    return `consecutive tool failures ${snapshot.consecutiveFailures}`;
+  }
+  if (snapshot.reads >= config.noProgressReads && snapshot.edits === 0) {
+    return `no progress: ${snapshot.reads} reads and 0 edits`;
+  }
+  return null;
+}

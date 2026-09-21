@@ -1,0 +1,91 @@
+{
+  "defaultProvider": "openai",
+  "defaultModel": "openai/gpt-5.6-terra",
+  "enabledModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai-codex/gpt-5.6-sol"
+  ],
+  "modelThinkingLevels": {
+    "openai/gpt-5.6-luna": "minimal",
+    "openai/gpt-5.6-terra": "low",
+    "openai-codex/gpt-5.6-sol": "high"
+  },
+  "cacheWarming": "off",
+  "defaultProjectTrust": "always",
+  "skills": [
+    ".agent/skills"
+  ],
+  "packages": [
+    "git:github.com/nicobailon/pi-web-access@v0.30.0",
+    "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72"
+  ],
+  "webAccess": {
+    "workflow": "none",
+    "tools": {
+      "enabled": true
+    },
+    "image": {
+      "enabled": false
+    },
+    "pdf": {
+      "enabled": false
+    }
+  },
+  "subagent": {
+    "maxDepth": 2,
+    "preventCycles": true
+  },
+  "audit": {
+    "enabled": true,
+    "approval": false,
+    "logPath": "~/.pi/agent/audit.db",
+    "logToolArguments": true
+  },
+  "memoryGate": {
+    "enabled": true,
+    "indexPath": ".agent/notes/INDEX.md",
+    "notesDir": ".agent/notes",
+    "explainDir": ".agent/explain",
+    "injectIndexOnSessionStart": true,
+    "blockRawNotesReads": true,
+    "autoScaffold": true,
+    "notesPerTask": 1
+  },
+  "readGuard": {
+    "enabled": true,
+    "dedupeWithinTurn": true,
+    "diffOnRepeatAfterWrite": true,
+    "allowRangeReads": true
+  },
+  "recap": {
+    "enabled": true
+  },
+  "explain": {
+    "enabled": true
+  },
+  "postEditTypecheck": {
+    "enabled": true
+  },
+  "bounds": {
+    "enabled": true,
+    "maxLoopDepth": 60,
+    "maxTurnWallClockMs": 600000,
+    "maxConsecutiveToolFailures": 3,
+    "noProgressReads": 6
+  },
+  "routing": {
+    "enabled": true,
+    "decisionEndpoint": "https://openrouter.ai/api/alpha/decisions",
+    "decisionModel": "typesafe/jev-1.13",
+    "decisionApiKeyEnv": "OPENROUTER_API_KEY",
+    "stateBudgetTokens": 4000,
+    "defaultOnUncertain": "escalate",
+    "tiers": {
+      "scout": "openai/gpt-5.6-luna",
+      "work": "openai/gpt-5.6-terra",
+      "escalate": "openai/gpt-5.6-terra",
+      "explain": "openai/gpt-5.6-luna"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+pi-build
+Copyright (c) 2026 LMotaWiele
+
+This repository is licensed under the MIT License in the file LICENSE, with
+the attributions and the exception below.
+
+extensions/plan-mode/
+  Copied unchanged, apart from this notice, from
+  @earendil-works/pi-coding-agent 0.87.0
+  examples/extensions/plan-mode/index.ts
+  examples/extensions/plan-mode/utils.ts
+  Copyright (c) 2025 Mario Zechner
+  MIT License:
+  https://github.com/earendil-works/pi/blob/main/LICENSE
+
+extensions/post-edit-typecheck.ts
+  Modified copy of extensions/post-edit-typecheck.ts from
+  https://github.com/Rmnlly/pi-config
+  commit ac0bb8edccfa07e78e6ab06b6b0538f1572c2d6e.
+  That repository publishes no license. The MIT License in this repository
+  does not grant rights to this file. Delete it if you need a tree that is
+  covered entirely by the MIT License. The other extensions load without it.
+
+The packages installed by install.sh are not vendored in this repository.
+They remain under their own licenses:
+
+  nicobailon/pi-web-access v0.30.0
+    MIT License
+  mjakl/pi-subagent
+    commit ce26a686f2571188d2e2b4d586e15a82606a7b72
+    MIT License
+
+Pi itself (@earendil-works/pi-coding-agent) is a separate project.
+Copyright (c) 2025 Mario Zechner. MIT License.

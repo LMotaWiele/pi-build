@@ -1,0 +1,121 @@
+user_prompt:
+# Fix spec — `test_all` suite-level mail guard, collect start marker, collect timing
+
+**Place at:** `docs/design/fix-spec-test-safety-and-collect-timing.md`
+**Audience:** coding agent. `src/Test.gs` + `src/Collect.gs` edits, an optional `src/Diag.gs` addition, and a one-row append to an existing note. No new `.md` beyond this one.
+**Read first:** `AGENTS.md`, `.agent/notes/gotchas-apps-script.md`, `docs/design/fix-spec-post-first-run.md` §3–§5, this file.
+**Status:** Ready for implementation
+**Date:** 2026-09-08
+
+**What changed since `fix-spec-post-first-run.md`.** §4 and §5 of that spec are **already implemented** in `src/Test.gs`. `test_invariant_collect_never_throws` stubs `fetchFeeds`, `appendPool_`, `prunePool_`, `pruneSeen_`, `writeHealth_`, `loadPool`, `loadSeen`, `poolRowCount_`, `deletePoolMojibake_` and restores in `finally`. `test_loadSeen` / `test_recordSeen` bracket `getLastRow()` and call `_deleteAddedRows_` in `finally`. `test_send` / `test_alert` return `'SKIP'` when `DRY_RUN === 'false'`, and `test_all` counts skips separately. Do not re-implement any of that.
+
+The instruction **"Do not run `test_all`"** in `docs/design/fix-spec-encoding-and-keys.md` §4 and `docs/design/fix-spec-model-and-preview.md` §4 is now **stale**. It was correct when `test_invariant_collect_never_throws` hit 19 live feeds. It is no longer the reason to hesitate. §5 of this spec records that.
+
+**Why this spec exists.** Two live conditions the existing tests and instrumentation do not cover:
+
+1. `DRY_RUN` is now `'false'` and `RECIPIENT_EMAIL` holds the client address. Mail suppression in the suite is per-test: each test that can reach `send` / `alert` opts in by wrapping itself in `_withNoMail_`. That is a convention. One test added without the wrapper mails the client from a test run. The blast radius changed on 2026-09-07; the mechanism did not.
+2. Three `collect` executions timed out. `appendPool_` and `writeHealth_` are both at the end of the `try`, and a hard execution timeout is not an exception — the `catch` never runs. A timed-out collect therefore appends nothing, writes no health row, and is indistinguishable on the `health` tab from a trigger that never fired and from a `collect skipped: lock held` return.
+
+**Out of scope: attaching a GCP project.** Cloud Logging is the permanent fix for (2) — it captures `console.log` emitted before a timeout kills the run, which the Sheet structurally cannot. It is deferred because changing the associated GCP project invalidates the script's authorization and puts the six installable triggers at risk, and the triggers are the product. Gate: after a full week of clean weekday sends, with `setup()` re-run immediately afterwards and a `collect` health row confirmed within the hour. §3 of this spec is the interim instrument and stays useful afterwards (it is Sheet-visible without opening Cloud Console).
+
+---
+
+## 1. `src/Test.gs` — suite-level mail guard
+
+### 1.1 The problem
+
+`_withNoMail_` is applied by four tests: `test_run`, `test_invariant_run_never_throws`, `test_invariant_zero_items_alerts_no_email`, `test_invariant_collect_never_throws`. That is currently complete coverage of the tests that can reach `send` / `alert`. It is complete by inspection, not by construction. The failure mode is a future test — or a future code path inside an existing test — that reaches `send()` with `DRY_RUN === 'false'`, which mails `RECIPIENT_EMAIL`.
+
+The gotcha card already records that `test_all` mailed the operator once. That regression was closed by making `alert()` honour `DRY_RUN`. `DRY_RUN` is no longer `'true'`, so that protection is inert.
+
+### 1.2 The fix
+
+Install the stubs once, around the test loop, and restore in a `finally`. Rebinding a top-level function on the global object rebinds it for every `.gs` file in the execution — that is exactly the property being relied on, and it is the same mechanism `_withNoMail_` already uses.
+
+**`test_send` and `test_alert` must run before the gu
+
+loop_index: 18
+elapsed_ms: 364600
+tier: unassigned
+
+tools:
+- todo_write success
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/INDEX.md
+- search_tool success
+- use_tool success
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- search_tool success
+- use_tool success
+- use_tool success
+- use_tool success
+- grep success
+- grep success
+- grep success
+- list_dir success /home/george-contis/Documents/appScriptNews/docs/design
+- read_file success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- grep success
+- grep success
+- read_file success /home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md
+- read_file success /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/README.md
+- read_file success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- read_file success /home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md
+- read_file success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- grep success
+- read_file success /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+- read_file success /home/george-contis/Documents/appScriptNews/src/Setup.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/rebuild-handover.md
+- read_file success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- run_terminal_command success
+- run_terminal_command success
+- todo_write success
+- write success /home/george-contis/Documents/appScriptNews/docs/design/fix-spec-test-safety-and-collect-timing.md
+- search_replace success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- search_replace success /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- search_replace success /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- search_replace success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- search_replace success /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- search_replace success /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- search_replace success /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+- read_file success /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Test.gs
+- read_file success /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- read_file success /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+- grep success
+- todo_write success
+- search_tool success
+- run_terminal_command success
+- use_tool success
+- todo_write success
+
+files_written:
+- /home/george-contis/Documents/appScriptNews/docs/design/fix-spec-test-safety-and-collect-timing.md
+- /home/george-contis/Documents/appScriptNews/src/Test.gs
+- /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+
+index_row: (none)
+current_claim: (none)
+
+last_tool_result:
+{"type": "Todo", "todo-update": {"summary_for_prompt": "- [completed] read: Read required notes, specs, and current Test/Collect/Diag/Setup code\n- [completed] write-spec: Write docs/design/fix-spec-test-safety-and-collect-timing.md\n- [completed] test-guard: Implement suite-level mail guard in src/Test.gs\n- [completed] collect-marker: Add collect-start health marker in src/Collect.gs\n- [completed] collect-timing: Add phase timing in src/Collect.gs\n- [completed] diag: Add optional diag_collect_timeouts in src/Diag.gs\n- [completed] notes: Append gotchas-apps-script.md and docs/NOTES.md\n- [completed] push: clasp push (no git commit)\n", "todos": [{"content": "Read required notes, specs, and current Test/Collect/Diag/Setup code", "priority": "medium", "status": "completed"}, {"content": "Write docs/design/fix-spec-test-safety-and-collect-timing.md", "priority": "medium", "status": "completed"}, {"content": "Implement suite-level mail guard in src/Test.gs", "priority": "medium", "status": "completed"}, {"content": "Add collect-start health marker in src/Collect.gs", "priority": "medium", "status": "completed"}, {"content": "Add phase timing in src/Collect.gs", "priority": "medium", "status": "completed"}, {"content": "Add optional diag_collect_timeouts in src/Diag.gs", "priority": "medium", "status": "completed"}, {"content": "Append gotchas-apps-script.md and docs/NOTES.md", "priority": "medium", "status": "completed"}, {"content": "clasp push (no git commit)", "priority": "medium", "status": "completed"}], "state": {"todos": {"read": {"content": "Read required notes, specs, and current Test/Collect/Diag/Setup code", "priority": "medium", "status": "completed"}, "write-spec": {"content": "Write docs/design/fix-spec-test-safety-and-collect-timing.md", "priority": "medium", "status": "completed"}, "test-guard": {"content": "Implement suite-level mail guard in src/Test.gs", "priority": "medium", "status": "completed"}, "collect-marker": {"content": "Add collect-start
+
+files_read:
+- /home/george-contis/Documents/appScriptNews/.agent/notes/INDEX.md
+- /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- /home/george-contis/Documents/appScriptNews/src/Test.gs
+- /home/george-contis/Documents/appScriptNews/src/Collect.gs
+- /home/george-contis/Documents/appScriptNews/src/Diag.gs
+- /home/george-contis/Documents/appScriptNews/docs/design/fix-spec-post-first-run.md
+- /home/george-contis/Documents/appScriptNews/docs/NOTES.md
+- /home/george-contis/Documents/appScriptNews/.agent/notes/README.md
+- /home/george-contis/Documents/appScriptNews/src/Setup.gs
+- /home/george-contis/Documents/appScriptNews/.agent/notes/rebuild-handover.md

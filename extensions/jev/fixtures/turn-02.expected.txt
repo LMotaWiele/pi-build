@@ -1,0 +1,54 @@
+user_prompt:
+pull
+
+loop_index: 6
+elapsed_ms: 34950
+tier: unassigned
+
+tools:
+- read_file success /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md
+- run_terminal_command success
+- run_terminal_command success
+- run_terminal_command success
+- run_terminal_command success
+- run_terminal_command success
+
+files_written:
+- (none)
+
+index_row: (none)
+current_claim: (none)
+
+last_tool_result:
+ M src/Collect.gs
+ M src/Diag.gs
+ M src/Main.gs
+ M src/Model.gs
+ M src/Test.gs
+==== remaining js ====
+no .js left
+==== Diag tail ====
+    } else if (kind === 'collect') {
+      openStart = null;
+    }
+  }
+  if (openStart) {
+    console.log('unpaired collect-start (most recent, may be in flight): ' + openStart);
+  }
+  console.log('unpaired collect-start rows in last ' + days + 'd: ' + unpaired);
+}
+
+function diag_preview_tuesday() {
+  var now = new Date('2026-09-08T07:00:00-03:00');
+  var sel = selectFresh_(loadPool(), now);
+  console.log('inWindow: ' + sel.inWindow.length + ' | fresh: ' + sel.fresh.length);
+  if (!sel.fresh.length) {
+    console.log('nothing in the Tuesday window');
+    return;
+  }
+  _diag_render_(selectCandidates(clusterItems(sel.fresh)), now, 'PREVIEW tuesday');
+}
+
+
+files_read:
+- /home/george-contis/Documents/appScriptNews/.agent/notes/gotchas-apps-script.md

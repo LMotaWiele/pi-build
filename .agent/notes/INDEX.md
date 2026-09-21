@@ -1,0 +1,58 @@
+<!-- agent-memory-schema: 1 -->
+# Notes index — read this first
+
+Agents: load **this file only**, then the **one** row matching the task. Do not bulk-read notes/.
+
+This file is the **authority for what happens next**. Notes hold conditions; this holds the queue.
+
+## Notes
+
+| Topic | File | Status | One-liner |
+|---|---|---|---|
+| How to write notes | [README.md](README.md) | meta | layers, front-matter, access rules |
+| _(add rows as findings appear)_ | | | |
+
+`Status` must match the `**Status:**` line in the linked file. Mismatch fails the pre-commit check.
+
+## Active next
+
+Ordered. Top row is what the next session picks up. One line each — detail lives in the source note.
+
+| # | Item | Source | Added |
+|---|---|---|---|
+| 1 | defaultProjectTrust accepts ask, always, or never. Use always. The sample value trusted is rejected. Non-interactive -p, json, and rpc with ask or never ignore project resources. | human | 2026-09-21 |
+| 2 | models.json is providers.openai and providers.openai-codex modelOverrides only. promptCache short and long are 1800 seconds. contextWindow stays 272000. Do not redeclare built-in GPT-5.6 models. Any top-level key besides providers fails validation. | human | 2026-09-21 |
+| 3 | Luna short-context prices match the 2026-09-21 page: input 0.20, cached 0.02, output 1.20 per 1M. Terra: 2.00, 0.20, 12.00. Sol promo through at least 2026-11-21 is 4, 0.40, 20. Leave Sol without a dollar override. Cache writes are 1.25x uncached input. Retired baseline grok-4.6-build is input 3.40, cached 0.85, output 10.20. The $13.02 session is costUsdTicks / 1e9. | human | 2026-09-21 |
+| 4 | The read tool range is offset (1-indexed line) and limit. force is not in the schema. Honor event.input.force if it arrives. Range reads are the supported re-read. | human | 2026-09-21 |
+| 5 | Settings writes use writeFileSync after lockfile.lockSync with realpath false. Empirical: after installing the two pinned packages, the settings file was still a symlink to settings/hosts/machina.json. pi-web-access v0.30.0 checked out 6c5afa1. | human | 2026-09-21 |
+| 6 | The package is @earendil-works/pi-coding-agent 0.87.0. Bare pi install exits 1 with Missing install source. Install each git ref explicitly. | human | 2026-09-21 |
+| 7 | Extension discovery loads extensions/*.ts and one-level index.ts only. Omit the !**/wip-* entry. jev/ has no index.ts and is not loaded as an extension. | human | 2026-09-21 |
+| 8 | cache_warming_decision is overridable with action warm or stop. v0.1 still sets cacheWarming off. GPT-5.6 cache TTL is 1800s, not 3600. | human | 2026-09-21 |
+| 9 | pi-web-access reads the agent web-search.json, not settings.webAccess. Codex OAuth can drive OpenAI search. Do not force DuckDuckGo. workflow is none. Image and PDF are disabled. | human | 2026-09-21 |
+| 10 | Do not install kcosr/pi-extensions or the enhansome list. Pin pi-web-access at v0.30.0 and pi-subagent at commit ce26a686f2571188d2e2b4d586e15a82606a7b72. The subagent block in settings is not read by that package. maxDepth 2 is a CLI flag. | human | 2026-09-21 |
+| 11 | mise is not installed. install.sh continues when node is at least 22.19.0. Hostname george-contis-Machina-Ub falls back to settings/hosts/machina.json. No prompt templates exist, so Read-first lists were not edited. | human | 2026-09-21 |
+| 12 | A mjakl subagent session has its own message list, so it does not share the parent cache. Its own multi-call cache was not measured on this machine. Explain and recap are one-shot pi processes. | human | 2026-09-21 |
+| 13 | pi auth check for openai and openai-codex is credentials_not_configured. Until both are ready, built-in GPT-5.6 models are absent, openai/gpt-5.6-luna partial-matches OpenRouter's model id, and openai-codex/gpt-5.6-sol matches nothing. A headless OK in that state is not the direct OpenAI tier. | human | 2026-09-21 |
+| 14 | install.sh symlinks extensions/, skills/, and lib/ into the agent config directory. Discovery loads extensions and skills from there. The module loader resolves ../lib from the symlink path, so lib is linked too. The host file does not name a machine-specific clone path. skills keeps .agent/skills. A missing skill path warns and continues. | human | 2026-09-21 |
+| 15 | Own telemetry records every tool call, including blocked and deduped, with arguments, path, result_bytes, outcome, and blocked_by. kcosr/pi-extensions is not installed. Own telemetry supersedes it. | human | 2026-09-21 |
+| 16 | The escalate tier in the sample host file is temporarily openai/gpt-5.6-terra. openai-codex/gpt-5.6-sol matched nothing on 2026-09-21. Codex login was not completed, so a Sol-class id was not verified. Fallback remains until that id resolves. | human | 2026-09-21 |
+| 17 | enhansome status-bar and todos packages were not found as installable sources and were not installed. Live cost is the turn-end cost line instead. | human | 2026-09-21 |
+| 18 | Model resolution: the CLI list is fuzzy and does not report which provider a pattern resolves to. Session start refuses a tier whose configured id is not an exact provider/id match, including an OpenRouter partial match of an openai slug. Checked in the routing extension, not in the offline doctor. | human | 2026-09-21 |
+| 19 | A configured id can be in the registry while setModel still returns false, because that provider has no credentials. Headless modes do not stop the prompt on shutdown, so a refused session exits before the first inference. An authenticated model whose id equals the configured string is a different provider and does not run. Turn cost is one line per turn and the session total accumulates. Extension copies share that counter on the process global. | human | 2026-09-21 |
+
+`Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
+Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.
+
+## Do not
+
+Standing constraints. These bind every session in this repo until removed here.
+
+- _(none yet)_
+
+## Glossary (optional)
+
+Project-specific verdicts, modes, and label names. If a label appears in a note's front-matter or in a routing question, it belongs here.
+
+| Name | Means |
+|---|---|
+| _(project-specific verdicts / modes)_ | |
