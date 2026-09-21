@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ReadGuard, renderRepeat } from "../extensions/read-guard.ts";
-import { boundReason, contextEpoch, resetEpochForTests } from "../lib/telemetry.ts";
+import {
+  beginUserTurn,
+  boundReason,
+  contextEpoch,
+  countsAsEdit,
+  countsAsRead,
+  noteToolOutcome,
+  resetEpochForTests,
+  resetTelemetryForTests,
+  turnSnapshot,
+} from "../lib/telemetry.ts";
 
 test("repeat read with no write returns a pointer", () => {
   resetEpochForTests();
@@ -56,6 +66,17 @@ test("range reads are never suppressed and a disabled guard passes everything", 
   guard.onNewPrompt();
   guard.enabled = true;
   assert.equal(guard.decide({ path: "a.ts" }).action, "pass");
+});
+
+test("a deduped read does not move reads; a passed read does", () => {
+  resetTelemetryForTests();
+  beginUserTurn("s", "p");
+  noteToolOutcome(false, countsAsRead("read", "deduped"), countsAsEdit("read"));
+  assert.equal(turnSnapshot().reads, 0);
+  noteToolOutcome(false, countsAsRead("read", "success"), countsAsEdit("read"));
+  assert.equal(turnSnapshot().reads, 1);
+  assert.equal(turnSnapshot().edits, 0);
+  resetTelemetryForTests();
 });
 
 test("bounds fire on the configured backstops", () => {

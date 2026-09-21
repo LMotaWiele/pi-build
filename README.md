@@ -60,16 +60,15 @@ source ~/.config/pi/env
 set +a
 ```
 
-Put that in the shell profile you use to launch pi, or export the variables another way. Doctor requires every name listed in `secrets.example.env`. The committed file lists the author's two:
+Put that in the shell profile you use to launch pi, or export the variables another way. Doctor requires every name listed in `secrets.example.env`. The committed file lists the author's Jev key:
 
 | Variable | Used for |
 |---|---|
-| `OPENAI_API_KEY` | The author's direct OpenAI models (`openai/gpt-5.6-luna`, `openai/gpt-5.6-terra`). |
 | `OPENROUTER_API_KEY` | The author's Jev routing call (`routing.decisionApiKeyEnv`). Routing escalates when this call cannot be made. |
 
 Any pi-compatible provider works. Put that provider's id in the host file (`provider/model-id`, or `openrouter/openai/gpt-5.6-luna` when the model id itself contains a slash) and put the key's variable name in `secrets.example.env`. The decision call is optional. Its default URL and model live only in `extensions/jev/adapter.ts`; the host file overrides both.
 
-On the author's host, `openai-codex/gpt-5.6-sol` is ChatGPT Plus or Pro (Codex), not the OpenAI API key. It is still listed in `enabledModels`. The escalate tier is temporarily `openai/gpt-5.6-terra`, because that Codex id matched nothing on 2026-09-21 and `/login` has not been checked since. If a tier's id is missing from the catalog at startup, the session uses the next tier down (`escalate`, then `work`, then `scout`) and prints that fallback on every turn that uses it. A tier that resolves to nothing does not receive traffic.
+On the author's host, scout and explain are `openai-codex/gpt-5.6-luna`, work and the default model are `openai-codex/gpt-5.6-terra`, and escalate is `openai-codex/gpt-5.6-sol`. Those are the ChatGPT Plus or Pro subscription, signed in with `/login`, not an OpenAI API key. The subscription catalog exposes all three ids. If a tier's id is missing from the catalog at startup, the session uses the next tier down (`escalate`, then `work`, then `scout`) and prints that fallback on every turn that uses it. A tier that resolves to nothing does not receive traffic.
 
 You can also store a provider key with `/login`. `doctor.sh` still requires the names in `secrets.example.env` for the live checks.
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +23,7 @@ import {
   attachTelemetry,
   beginUserTurn,
   consumeTurnCostLine,
+  countsAsEdit,
   recordInference,
   recordToolCall,
   resetTelemetryForTests,
@@ -401,6 +403,30 @@ test("migrate-notes writes v1 siblings and leaves the v0 files in place", () => 
   scaffoldProject(already);
   assert.match(capture(() => migrateProject(already)), /already schema v1/);
   assert.equal(fs.existsSync(path.join(already, ".agent/notes/INDEX.v1.md")), false);
+});
+
+test("installed mutating tools are exactly the progress-edit set", () => {
+  const bin = fs.realpathSync(execFileSync("which", ["pi"], { encoding: "utf8" }).trim());
+  let dir = path.dirname(bin);
+  while (!fs.existsSync(path.join(dir, "package.json"))) {
+    const parent = path.dirname(dir);
+    assert.notEqual(parent, dir);
+    dir = parent;
+  }
+  const require = createRequire(path.join(dir, "package.json"));
+  const tools = require("./dist/core/tools/index.js") as {
+    allToolNames: Set<string>;
+    createReadOnlyToolDefinitions: (cwd: string) => { name: string }[];
+  };
+  const names = [...tools.allToolNames].sort();
+  const readOnly = new Set(tools.createReadOnlyToolDefinitions(dir).map((tool) => tool.name));
+  const mutating = names.filter((name) => !readOnly.has(name));
+  assert.deepEqual(names, ["bash", "edit", "find", "grep", "ls", "powershell", "read", "write"]);
+  assert.deepEqual(mutating.sort(), ["bash", "edit", "powershell", "write"]);
+  for (const name of mutating) assert.equal(countsAsEdit(name), true, name);
+  for (const name of names) {
+    if (!mutating.includes(name)) assert.equal(countsAsEdit(name), false, name);
+  }
 });
 
 function capture(run: () => void): string {

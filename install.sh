@@ -50,6 +50,7 @@ link_into_agent "$REPO/settings/web-search.json" ~/.pi/agent/web-search.json
 link_into_agent "$REPO/extensions" ~/.pi/agent/extensions
 link_into_agent "$REPO/skills" ~/.pi/agent/skills
 link_into_agent "$REPO/lib" ~/.pi/agent/lib
+link_into_agent "$REPO/SPEC-delegation-ab.md" ~/.pi/agent/SPEC-delegation-ab.md
 
 if [ ! -f ~/.config/pi/env ]; then
   mkdir -p ~/.config/pi
@@ -62,5 +63,5 @@ fi
 pi install git:github.com/nicobailon/pi-web-access@v0.30.0
 pi install git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72
 
-echo "→ doctor.sh fails closed until OPENAI_API_KEY and OPENROUTER_API_KEY are exported"
+echo "→ doctor.sh fails closed until every name in secrets.example.env is exported"
 "$REPO/doctor.sh"

@@ -236,6 +236,21 @@ export function bumpLoopIndex(): number {
   return turn.loopIndex;
 }
 
+/** A deduped or blocked read saved tokens and must not spend the no-progress budget. */
+export function countsAsRead(name: string, outcome: string): boolean {
+  return name === "read" && outcome !== "blocked" && outcome !== "deduped";
+}
+
+/**
+ * Tools in pi 0.87.0 that can mutate a file. Widened from {edit, write} after
+ * reading the installed package: bash and powershell are shells.
+ */
+const FILE_MUTATING_TOOLS = new Set(["edit", "write", "bash", "powershell"]);
+
+export function countsAsEdit(name: string): boolean {
+  return FILE_MUTATING_TOOLS.has(name);
+}
+
 export function noteToolOutcome(isError: boolean, countsAsRead: boolean, countsAsEdit: boolean): void {
   const turn = bag().turn;
   if (isError) turn.consecutiveFailures += 1;
@@ -286,7 +301,8 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   result_bytes INTEGER,
   elapsed_ms INTEGER,
   outcome TEXT,
-  blocked_by TEXT
+  blocked_by TEXT,
+  parent_turn_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tool_path ON tool_calls(session_id, path);
 
@@ -304,7 +320,23 @@ CREATE TABLE IF NOT EXISTS inference_calls (
   reasoning_tokens INTEGER,
   ttft_ms INTEGER,
   elapsed_ms INTEGER,
-  cost_usd REAL
+  cost_usd REAL,
+  parent_turn_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ab_trials (
+  trial INTEGER NOT NULL,
+  arm TEXT NOT NULL,
+  parent_turn_id TEXT,
+  parent_session_id TEXT,
+  head TEXT,
+  started_at INTEGER,
+  wall_clock_s REAL,
+  completed INTEGER,
+  bound_reason TEXT,
+  gap_since_previous_run_s REAL,
+  tier TEXT,
+  void_reason TEXT
 );
 `;
 
@@ -331,9 +363,35 @@ export interface InferenceRow {
   costUsd?: number | null;
 }
 
+interface Statement {
+  run(...args: unknown[]): unknown;
+  all(...args: unknown[]): unknown[];
+}
+
 interface Db {
   exec(sql: string): void;
-  prepare(sql: string): { run(...args: unknown[]): unknown };
+  prepare(sql: string): Statement;
+}
+
+/** Child pi processes inherit this. Parent rows stay null. */
+export function currentParentTurnId(): string | null {
+  const depth = Number(process.env.PI_SUBAGENT_DEPTH ?? "0");
+  const id = process.env.PI_BUILD_PARENT_TURN;
+  if (!Number.isFinite(depth) || depth <= 0) return null;
+  if (!id || !id.trim()) return null;
+  return id.trim();
+}
+
+export function markParentTurnForDispatch(toolName: string): void {
+  if (toolName !== "subagent") return;
+  const turnId = bag().turn.turnId;
+  if (turnId) process.env.PI_BUILD_PARENT_TURN = turnId;
+}
+
+function ensureColumn(store: Db, table: string, column: string): void {
+  const rows = store.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (rows.some((row) => row.name === column)) return;
+  store.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
 }
 
 export function telemetryPath(): string {
@@ -351,6 +409,8 @@ function database(): Db | null {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const opened = new DatabaseSync(file);
     opened.exec(SCHEMA);
+    ensureColumn(opened, "tool_calls", "parent_turn_id");
+    ensureColumn(opened, "inference_calls", "parent_turn_id");
     state.db = opened;
     return state.db;
   } catch (err) {
@@ -381,8 +441,8 @@ export function recordToolCall(row: ToolCallRow): void {
     store
       .prepare(
         `INSERT INTO tool_calls
-          (ts, session_id, turn_id, loop_index, tool_name, arguments, path, result_bytes, elapsed_ms, outcome, blocked_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (ts, session_id, turn_id, loop_index, tool_name, arguments, path, result_bytes, elapsed_ms, outcome, blocked_by, parent_turn_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         Date.now(),
@@ -396,6 +456,7 @@ export function recordToolCall(row: ToolCallRow): void {
         row.elapsedMs ?? null,
         row.outcome,
         row.blockedBy ?? null,
+        currentParentTurnId(),
       );
   } catch (err) {
     console.error("[telemetry] tool_calls insert failed", err);
@@ -449,8 +510,8 @@ export function recordInference(row: InferenceRow): void {
     store
       .prepare(
         `INSERT INTO inference_calls
-          (ts, session_id, turn_id, loop_index, tier, model, prompt_tokens, cached_tokens, completion_tokens, reasoning_tokens, ttft_ms, elapsed_ms, cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (ts, session_id, turn_id, loop_index, tier, model, prompt_tokens, cached_tokens, completion_tokens, reasoning_tokens, ttft_ms, elapsed_ms, cost_usd, parent_turn_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         Date.now(),
@@ -466,6 +527,7 @@ export function recordInference(row: InferenceRow): void {
         row.ttftMs ?? null,
         row.elapsedMs ?? null,
         row.costUsd ?? null,
+        currentParentTurnId(),
       );
   } catch (err) {
     console.error("[telemetry] inference_calls insert failed", err);
@@ -572,6 +634,10 @@ export function attachTelemetry(pi: TelemetryHost): void {
       });
       void loop;
     });
+    pi.on("tool_call", (event) => {
+      const name = stringField(event, "toolName");
+      if (name) markParentTurnForDispatch(name);
+    });
     pi.on("tool_execution_start", (event) => {
       const id = stringField(event, "toolCallId");
       if (id) bag().startedAt.set(id, Date.now());
@@ -585,7 +651,7 @@ export function attachTelemetry(pi: TelemetryHost): void {
       const isError = event.isError === true && annotation?.outcome !== "blocked" && annotation?.outcome !== "deduped";
       const outcome = annotation?.outcome ?? (isError ? "error" : "success");
       const filePath = annotation?.path ?? pathOf(input);
-      noteToolOutcome(outcome === "error", name === "read" && outcome !== "blocked", name === "edit" || name === "write");
+      noteToolOutcome(outcome === "error", countsAsRead(name, outcome), countsAsEdit(name));
       const started = id ? state.startedAt.get(id) : undefined;
       recordToolCall({
         toolCallId: id,

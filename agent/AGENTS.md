@@ -14,7 +14,7 @@ Explanations are not notes. They land under `.agent/explain/` and are never inde
 
 Do not switch this session's model in the middle of a turn. Escalation is a subagent with its own context.
 
-Scout and explain summaries use `openai/gpt-5.6-luna` with thinking off. Work uses `openai/gpt-5.6-terra` at low. Escalate uses `openai-codex/gpt-5.6-sol` at high, as a subagent.
+Scout and explain summaries use `openai-codex/gpt-5.6-luna` with thinking off. Work uses `openai-codex/gpt-5.6-terra` at low. Escalate uses `openai-codex/gpt-5.6-sol` at high, as a subagent.
 
 ## Approvals
 
