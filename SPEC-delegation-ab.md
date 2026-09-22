@@ -43,7 +43,16 @@ Corrected reference, for calibration:
 
 398 calls, 46,998,477 input tokens, 88% of them cache reads, 446,464 output tokens.
 
-**One tripwire for the whole run: $25 or 250 model calls.** If the run passes either before reaching §5, stop and report what is committed. Below that, do not stop to ask. The reference build was 398 calls and $32.50 for more work than this spec contains.
+**One tripwire for the whole run: $25 or 250 model calls — your own.** If the run passes either before reaching §5, stop and report what is committed. Below that, do not stop to ask. The reference build was 398 calls and $32.50 for more work than this spec contains.
+
+**Pi's inference calls are not yours.** Rows in `telemetry.db` are the measurement: they run on the Codex subscription, on a separate ledger, and they are the output of §4 rather than the cost of producing it. Never count them against the tripwire. Void trial 2 alone put 81 rows in the database; at that scale the fresh six are ~250 pi calls, which is the entire tripwire and would stop the set mid-run every time — and a stopped set is `VOID` under §6 rule 0, so the tripwire would be destroying the thing it is meant to protect.
+
+The two ledgers, kept apart:
+
+| Ledger | What is in it | Counts against the tripwire |
+|---|---|---|
+| Grok Build usage | Your model calls: reading this spec, editing the repo, orchestrating the trials, writing the report | Yes |
+| `telemetry.db` | Every pi and subagent inference call from §1.2's probes, §2.3's probe, and the six trials | No — these are §5's data |
 
 ### 0.3 Turns
 
@@ -56,11 +65,10 @@ Corrected reference, for calibration:
 
 Commit after §2, after §3 (tagged `ab-baseline`), and after §6. Those are `git commit` calls inside the turn, not places to hand back.
 
-**Three things do stop the turn, and only three:**
+**Two things do stop the turn, and only two:**
 
 1. **§6 lands on `NEITHER` or `INCONCLUSIVE`.** The next action is a human decision and the thresholds exist precisely so that an agent cannot argue past them.
-2. **§6 lands on `VOID`.** Fewer than three non-void trials in either arm. Rules 1–6 do not run. Report the void reasons and stop. Do not append trials onto a void set.
-3. **The §0.2 tripwire fires.** There is no per-stage budget. $25 or 250 model calls, for the whole run, is the only cost stop.
+2. **The §0.2 tripwire fires.**
 
 Everything else — a failed assertion, a void trial, a branch in §1.2 or §2.3 — is handled by a conditional written into the section itself. Follow it and keep going.
 
@@ -194,16 +202,20 @@ Commit and continue.
 
 `extensions/routing.ts`, `fireBound`, records a telemetry row, appends a `pi-build-bound` entry, logs, and calls `ctx.abort()`. The partial tree survives; the knowledge of where the turn got to does not. The next prompt starts from a cleared `filesWritten` and an empty recap.
 
-Before `ctx.abort()`, and only when `writtenFiles().length > 0`:
+Before `ctx.abort()`, and only when `writtenFiles().length > 0`.
+
+**Gate on written files, not on `edits`.** §2.2 pinned the mutating set to `bash / edit / powershell / write` against the installed package, so `turn.edits` now increments on any `bash` call. A turn that only ran shell commands has `edits > 0` and an empty `writtenFiles()`, and would write a checkpoint row reading `wrote ` with nothing after it. `edits` is still the right counter for the no-progress bound; it is the wrong one for a resume point.
+
+The row:
 
 1. `queue_append` one row: `bounded at <reason>; wrote <writtenFiles().join(", ")>; resume from <first unwritten path named in the open note, or "(unknown)">`, source `SPEC-delegation-ab §3.1`.
 2. `setLastRecap` with the same line, so `orientationBlock` carries it into the next turn's cached prefix.
 
-`edits` stays the counter for the no-progress bound. Bash and powershell increment it, which is the right signal for "this turn is not stuck reading." It is the wrong signal for a resume point. A bash-only turn has `edits > 0` and an empty `writtenFiles()`, and the row would read `wrote` with nothing after it. When `writtenFiles()` is empty, log and abort as now, no queue row. A queue that accumulates empty bound rows is a log, which INDEX forbids.
+When `writtenFiles()` is empty the turn produced nothing to resume from — log and abort as now, no queue row. A queue that accumulates empty bound rows is a log, which INDEX forbids.
 
 Failure of either write must not prevent `ctx.abort()`. Wrap both, log on failure, continue.
 
-Test: `writtenFiles().length > 0` produces exactly one queue row and a non-empty recap; an empty `writtenFiles()` produces neither, including when `edits > 0`; a throwing `queue_append` still reaches `ctx.abort()`. An empty list still aborts.
+Test: a written file produces exactly one queue row and a non-empty recap; a turn with `edits > 0` from `bash` alone and no written file produces neither; a throwing `queue_append` still reaches `ctx.abort()`.
 
 ### 3.2 Explain must not fire on an aborted turn
 
@@ -251,34 +263,48 @@ Commit, tag `ab-baseline`, confirm `./doctor.sh --offline` exits 0, and continue
 
 ## 4. The measurement
 
-### 4.0 Before any trial, and after each arm B
+### 4.0 Runnability, asserted before any trial
 
-If check 1, 2, or 3 fails, do not start the six. Check 4 runs after the first arm B trial and changes how rules 4 and 5 are scored. It does not stop the set.
-
-1. List the subagent definitions this cwd will actually dispatch. From the repository root, `node --experimental-strip-types scripts/subagent-list.mjs` imports `discoverAgents` from the pinned `pi-subagent` package and prints `name`, `source`, and `tools`. It exits 0 only when a definition's tools include `edit` and `write` and do not include `subagent`. If the only definition is `explore`, arm B is not runnable and is not run.
-
-   `pi subagent list` is not a subcommand. Passing those words to `pi` starts a session. Do not do that. `--subagent-max-depth 0` skips discovery, so it is not a listing either.
-
-   The writing definition is `.pi/agents/implement.md`. Tools are `read`, `edit`, `write`. The allowlist does not include `subagent`, so the child cannot dispatch. `sessionPreference` is `ephemeral`, so one call is one file and parallel calls do not share a session. There is no model id. The child inherits whatever the spawn already resolved: the parent's session model, or `defaultModel`. Do not add a model id to remove that difference, and do not build a seam to pin it. Check 4 records which one happened.
-
-   The body applies the spec section in the prompt to the single file path in the prompt, and does not read or edit any other path.
-
-2. From `tests/fixtures/ab`, on the unmodified tree, `npx tsc --noEmit && node --test` exits 0. A red gate stops the turn in seconds. This compiles the files that exist. It does not read `SPEC.md`, so it cannot catch a spec that names a path that is not there. Trial 1's gate was already green.
-
-3. Path integrity, from the repository root. Every `tests/fixtures/ab/…ts` path named in `tests/fixtures/ab/SPEC.md` must exist, and every `*.ts` file under `tests/fixtures/ab/` outside `node_modules` must be named exactly once, by that full path:
+**Arm B requires a subagent definition that can write.** Verify before the first trial:
 
 ```bash
-set -euo pipefail
-spec=tests/fixtures/ab/SPEC.md
-named=$(grep -oE 'tests/fixtures/ab/[^[:space:]`]+' "$spec" | grep -E '\.ts$' | sort)
-files=$(find tests/fixtures/ab -name '*.ts' -not -path '*/node_modules/*' | sed 's|^\./||' | sort)
-test -n "$named"
-test "$named" = "$files"
-test -z "$(printf '%s\n' "$named" | uniq -d)"
-while IFS= read -r p; do test -f "$p"; done <<< "$named"
+pi subagent list
 ```
 
-4. After the first arm B trial, and again after each later arm B trial, compare `inference_calls.model`. Parent rows are `turn_id = parent_turn_id AND parent_turn_id IS NULL`. Child rows are `parent_turn_id =` that id. If any child model differs from the parent's, `total_cost_usd` does not decide rules 4 and 5 for the set. Sol's input price is 2.5× Terra's, so a Terra child under a Sol parent wins rule 4 on a tier mix that is not delegation. Rule 4 keeps its token clause and drops the cost conjunct. Rule 5 becomes median A `total_prompt_tokens` ≤ 0.75 × median B. State both model ids and the substitution in the report. Do not void the trial for the mix, and do not pin a model to erase it. Forcing one model on both sides is a later lever. It is not part of this measurement.
+If the only installed definition is `explore`, or no listed definition has `edit` and `write` in its tool set, **arm B is not runnable and must not be run.** A read-only child given a file and a spec section will read it, fail to edit it, and exhaust its own no-progress budget — which measures the definition's tool set, not delegation.
+
+Fix it before proceeding: add a minimal `implement` definition with `read`, `edit`, `write`, and no dispatch of its own, scoped to a single file path. Commit it. That commit becomes the `HEAD` all six trials share.
+
+**Every path `SPEC.md` names must exist.** Trial 1 (void, §4.3a) died at `consecutive tool failures 3` reading `tests/fixtures/ab/types.ts`, `parse.ts`, and `format.ts` — three guesses at a flat layout, while the sources are under `src/`. The compile gate passed throughout, because it compiles what exists rather than what the spec names.
+
+```bash
+grep -oE 'tests/fixtures/ab/[A-Za-z0-9_./-]+\.ts' tests/fixtures/ab/SPEC.md \
+  | sort -u | while read -r f; do test -f "$f" || { echo "missing: $f"; exit 1; }; done
+```
+
+`SPEC.md` names every file by its full repo-relative path, exactly once, and every one resolves. A bare filename is a guess the child or the parent has to make, and three wrong guesses end the turn.
+
+**Arm A requires the fixture gate to run at all.** Verify, from a clean fixture:
+
+```bash
+cd tests/fixtures/ab && npx tsc --noEmit && node --test
+```
+
+Both must exit 0 on the unmodified fixture. A turn that dies at `consecutive tool failures 3` within the first three calls did not hit a bound — it hit a broken prerequisite, and the same break will void every arm A trial.
+
+**Both arms must run the same model.** `.pi/agents/implement.md` carries no model id, so an ephemeral child resolves to whatever the harness gives it — the parent's session model, which routing has set to the `escalate` tier, or `defaultModel`. Those are Sol and Terra respectively, and the difference is 2.5x on input.
+
+After the first arm B trial, before continuing:
+
+```sql
+SELECT parent_turn_id IS NULL AS is_parent, model, COUNT(*), SUM(prompt_tokens)
+FROM inference_calls WHERE session_id IN (SELECT session_id FROM trials WHERE arm='B')
+GROUP BY is_parent, model;
+```
+
+If children ran a cheaper model than the parent, arm B's cost advantage is a tier difference and not a delegation result. That does not void the set — record the child model per trial, and evaluate §6 rules 4 and 5 on `total_prompt_tokens` alone, stating the substitution. Delegation is being measured for what it does to context, and a tier mix is a separate lever that can be pulled without it.
+
+**A trial that fails any assertion is void, not failed.** Void trials do not count toward the §6 completion tallies, do not appear in the arm medians, and are re-run after the prerequisite is fixed. Record them in the report under a separate heading with the assertion that failed.
 
 ### 4.1 What is being compared
 
@@ -294,7 +320,7 @@ Arm B uses the **already-pinned `pi-subagent` package and a prompt-level instruc
 Create `tests/fixtures/ab/`:
 
 - 6 TypeScript source files with real interdependence — a change to a shared type must propagate to at least 4 of them.
-- `SPEC.md`: an unambiguous, fully specified change requiring edits in all 6. Each file is named once, by its path from the repository root. No design decisions left open. This is deliberately the easy case for the router: spec exists, change is reversible, stack is familiar. The headings were bare filenames on `ab-baseline`. That is the trial 1 defect (§4.3a). They were corrected once, in the commit the fresh six share, and are not edited again.
+- `SPEC.md`: an unambiguous, fully specified change requiring edits in all 6. No design decisions left open. This is deliberately the easy case for the router: spec exists, change is reversible, stack is familiar.
 - A deterministic gate: `tsc --noEmit` clean and `node --test` green from the fixture root.
 - `reset.sh`: restores the fixture from git.
 
@@ -311,28 +337,34 @@ Apply tests/fixtures/ab/SPEC.md in full. Do not dispatch subagents.
 **Arm B:**
 
 ```
-Apply tests/fixtures/ab/SPEC.md in full. Dispatch one subagent per file named in the spec; give each child the spec section and the file path only. Do not read those files in this session.
+Apply tests/fixtures/ab/SPEC.md in full. Dispatch one implement subagent per file named in the spec; give each child the spec section and the file path only. Do not read, edit, or write those files in this session.
 ```
 
-The child named in that dispatch is `implement` (§4.0). `explore` cannot edit, so a trial that dispatches only `explore` is void.
+### 4.3a Trials recorded void, 2026-09-22
 
-### 4.3a Trials 1 and 2 are void
+Two trials ran at `bd51f93` before §4.0 existed. Both are void. Their rows stay in `/tmp/pi-build-ab/telemetry.db` and are reported under the void heading; neither is retried at that commit, because §4.0's fix will move `HEAD`.
 
-Recorded on `bd51f93` (`ab-baseline`) in `/tmp/pi-build-ab/telemetry.db`. Leave that database where it is. Do not delete or amend the rows. Do not point the fresh set at that file. Do not score them under rules 1–6.
+| Trial | Arm | Bound | Void because |
+|---|---|---|---|
+| 1 | A | consecutive tool failures 3, at 3 calls / 148s | Failed before work started. Fixture gate unverified. |
+| 2 | B | child unbounded, 721s, 8 subagent calls / 18 sessions | Only `explore` installed; children were read-only and could not write the files they were given. |
 
-**Trial 1, arm A, void.** Parent turn `0fcbeecb-3ec5-47f3-b855-b5affb56e53d`, session `01a0c66f-534a-7493-a945-b180c21796e7`, tier `escalate`, three inference calls. Bound `consecutive tool failures 3` at loop index 2, 24s into the turn. The 148s wall clock is that abort plus the recap subprocess. The three failures were reads of `tests/fixtures/ab/types.ts`, `tests/fixtures/ab/parse.ts`, and `tests/fixtures/ab/format.ts`. The sources live at `tests/fixtures/ab/src/`. `SPEC.md` headed each section with the bare filename, and the agent guessed a flat layout three times. That is a defect in the fixture, not in the harness. The unmodified gate had already exited 0. `tsc --noEmit` compiles files that exist. It does not notice what `SPEC.md` names.
+Trial 2 does confirm one thing worth keeping: child sessions are instrumented and `parent_turn_id` correlation works, so §2.3 took its first branch and §5 can be computed from `telemetry.db`.
 
-A read of a path that is not there is counted as a tool failure. Three wrong path guesses are ordinary exploration, not a malfunction. Whether `maxConsecutiveToolFailures` should distinguish "the tool broke" from "the file is not there" is open. Do not change the threshold for it. If arm A hits the same bound again on the fresh set, with the corrected paths in `SPEC.md`, that is a result and it goes in the report.
+### 4.3b Trials recorded void, 2026-09-22, at 9d81e6b
 
-**Trial 2, arm B, void.** Parent turn `8a6f6b69-4ebb-4068-9228-4cb936a9278f`, session `01a0c671-9705-7452-8c93-9f18210d325b`, tier `escalate`. Eight `subagent` calls, all successful. Eighteen sessions: the parent plus seventeen children, and every child inference row carries that `parent_turn_id`. The only installed definition was `explore` (`read`, `grep`, `find`, `ls`). Children recorded zero edits. Nine child bound rows are `no progress: 6 reads and 0 edits`, which is what a read-only agent does when told to edit. The parent process was killed at 720s and the row says `child unbounded`. That label is the kill, not a measurement of delegation. The parent itself edited all six fixture files; those edits do not make the trial a delegated result.
+Six trials ran at `9d81e6b` after §4.0 passed. Arm A has three non-void trials. Arm B has none. §6 rule 0 fires. Rules 1–6 do not run. Rows stay in `/tmp/pi-build-ab-set/telemetry.db`. Do not score them and do not point a later set at that file.
 
-§4.3 assumed a writing child. That child did not exist, so every arm B trial on that tree fails the same way. That is a defect in the spec, not a result.
+| Trial | Arm | What happened | Void because |
+|---|---|---|---|
+| 1 | A | Gate passed, 6 edits, no bound | — |
+| 2 | B | Parent edited all 6 files after 2 `explore` dispatches | 0 child edits; parent wrote the fixture |
+| 3 | A | Gate passed, 6 edits, no bound | — |
+| 4 | B | Same as trial 2 | 0 child edits; parent wrote the fixture |
+| 5 | A | `no progress: 6 reads and 0 edits` at 3 calls | — not void. The bound is no-progress, not consecutive tool failures |
+| 6 | B | Same as trial 2 | 0 child edits; parent wrote the fixture |
 
-The result that stands: child sessions are instrumented, and `parent_turn_id` correlates. §2.3 took its first branch. §5 for the fresh set comes from `telemetry.db`.
-
-Nine of those children, nine distinct sessions, each reached `no progress: 6 reads and 0 edits`. That measures `explore`'s tool set. It is also the first figure on this machine for what a child's context costs before the child produces anything. §5.3 records the same figure for `implement`, and does not act on it.
-
-Both trials are void again because later commits move `HEAD`, and §8 voids a set whose trials do not share one commit. `a0043ca` added `implement` and is not the trial commit either: the path correction is a later commit. The fresh six share that later commit. Do not append.
+Each arm B child was `explore` (`read`, `grep`, `find`, `ls`). `implement` was installed and was not the agent the prompt named, so the child hit `no progress: 6 reads and 0 edits` and the parent did the edit. Parent and child were both `gpt-5.6-sol`. The arm B prompt in §4.3 is the §8 tighten: name `implement`, and forbid the parent from reading, editing, or writing the fixture files.
 
 ### 4.4 Protocol
 
@@ -341,36 +373,24 @@ Both trials are void again because later commits move `HEAD`, and §8 voids a se
 Before each trial, in this order:
 
 ```bash
-set -euo pipefail
 bash tests/fixtures/ab/reset.sh
-git diff --quiet -- settings/hosts/machina.json agent/models.json agent/AGENTS.md SPEC-delegation-ab.md
+git diff --quiet -- settings/hosts/machina.json agent/models.json agent/AGENTS.md || exit 1
 git status --porcelain            # clean apart from the fixture reset
 readlink -f ~/.pi/agent/settings.json   # must resolve inside this repo
-node --experimental-strip-types scripts/subagent-list.mjs
-spec=tests/fixtures/ab/SPEC.md
-named=$(grep -oE 'tests/fixtures/ab/[^[:space:]`]+' "$spec" | grep -E '\.ts$' | sort)
-files=$(find tests/fixtures/ab -name '*.ts' -not -path '*/node_modules/*' | sed 's|^\./||' | sort)
-test -n "$named"
-test "$named" = "$files"
-test -z "$(printf '%s\n' "$named" | uniq -d)"
-while IFS= read -r p; do test -f "$p"; done <<< "$named"
-git rev-parse HEAD                      # record per trial. All six must equal this commit.
+git rev-parse HEAD                      # record per trial
 ```
 
-The `git diff --quiet` line is not ceremony. Per §1.1, pi loads `settings/hosts/machina.json` from the working tree, so an uncommitted edit to the host file, the model overrides, or the cached prefix changes the harness under measurement with nothing in the trial output to reveal it. `~/.pi/agent/SPEC-delegation-ab.md` is the same kind of symlink: an uncommitted edit to this file is what the next session reads. A trial that starts dirty is void, not noisy. `scripts/subagent-list.mjs` is §4.0's writing-agent check, repeated before each trial so a session that can no longer edit does not get scored as arm B.
+The `git diff --quiet` line is not ceremony. Per §1.1, pi loads `settings/hosts/machina.json` from the working tree, so an uncommitted edit to the host file, the model overrides, or the cached prefix changes the harness under measurement with nothing in the trial output to reveal it. A trial that starts dirty is void, not noisy.
 
 Controls, all mandatory:
 
 - Record `HEAD` per trial. All six must share one commit.
 - `cacheWarming` stays `off`. With a 1800s TTL the gap between runs changes the result; record `gap_since_previous_run_s` per trial.
 - One session per trial. No session reuse.
-- No trial is retried. A crashed or aborted trial is recorded as-is with its bound reason. A trial §4.0, §4.3a, §4.4, or §8 marks void is recorded with that reason and is not a failure. A void trial is not a completion, whatever the gate returned. Rule 0 counts non-void trials only.
-- Arm B delegation, from `tool_calls`, after the trial. Either condition voids that trial. Do not rewrite the arm B prompt to forbid the parent more firmly. If either condition fires, the re-run scopes the parent's tools so it cannot `edit` or `write`, and that re-run is a new set from one commit.
-  - Zero successful child `edit` or `write` rows (`parent_turn_id` set, `outcome = success`). The children did not change a file.
-  - Any successful parent `edit` or `write` whose path refers to a file under `tests/fixtures/ab/` (`turn_id` is the trial's `parent_turn_id`, `parent_turn_id` is null). The parent did the fixture work itself.
+- No trial is retried. A crashed or aborted trial is recorded as-is with its bound reason.
 - Record wall-clock start per trial.
 
-If a child hangs, kill it and record the trial as failed with reason `child unbounded`. That is a cost of arm B, not noise. §4.3a is the exception: trial 2's children were their own pi processes and did fire `no progress: 6 reads and 0 edits`, because the bound extension loads in the child. A kill of a child that has no writing tool is void, not that failure.
+Arm B's children have **no bounds** — `maxLoopDepth`, `maxTurnWallClockMs`, and the no-progress check live in the parent process and do not cross the `execFile` boundary, as `explain.ts` already demonstrates with its bare 180-second timeout. If a child hangs, kill it and record the trial as failed with reason `child unbounded`. That is a cost of arm B, not noise.
 
 ---
 
@@ -395,33 +415,29 @@ If a child hangs, kill it and record the trial as failed with reason `child unbo
 
 ### 5.3 Report
 
-`.agent/explain/2026-09-22-ab-results.md`: the 6 trial rows, per-arm median and range, and the §6 verdict with the arithmetic shown. Table before summary. Failed trials included. For every arm B trial, the parent `model` and the child `model`s. If §4.0 check 4 dropped dollars, the substitution and both ids.
-
-One figure is recorded and not acted on. Trial 2's nine `explore` children each reached six reads and zero edits (§4.3a). For each fresh arm B trial, count the inference calls an `implement` child made before its first successful `edit` or `write`. The break-even to put beside that count is 4 to 6 calls per child. If the children spend 3–4 calls orienting before the first edit, say so. Do not change a threshold from that number in this turn.
+`.agent/explain/2026-09-22-ab-results.md`: the 6 trial rows, per-arm median and range, and the §6 verdict with the arithmetic shown. Table before summary. Failed trials included.
 
 ---
 
 ## 6. Pre-committed branch
 
-Evaluate in order. First match decides. Rules 1–6 are not revisited after the fresh set starts. Rule 0 was added after §4.3a: a void set and a both-failed set produce the same completion table and opposite conclusions.
+Evaluate in order. First match decides. **Fixed before any trial ran; not revisited.**
+
+`NEITHER` means both architectures were tested and both lost. It does not mean both arms were broken — that is `VOID`, and the two are not interchangeable.
 
 | # | If | Then |
 |---|---|---|
-| 0 | Fewer than 3 non-void trials in either arm | `VOID`. Rules 1–6 do not evaluate. |
-| 1 | Neither arm completes in ≥ 2 of 3 | `NEITHER` |
+| 0 | Either arm has fewer than 3 non-void trials | `VOID` — fix the §4.0 prerequisite, re-run the full set of six, do not evaluate rules 1–6 |
+| 1 | Neither arm completes in ≥ 2 of 3 non-void trials | `NEITHER` |
 | 2 | Arm B completes ≥ 2 of 3 and arm A ≤ 1 | `DELEGATED` |
 | 3 | Arm A completes ≥ 2 of 3 and arm B ≤ 1 | `MONOLITHIC` |
 | 4 | Both ≥ 2 of 3, median B `total_prompt_tokens` ≤ 0.75 × median A, and median B `total_cost_usd` ≤ median A | `DELEGATED` |
 | 5 | Both ≥ 2 of 3, and median A `total_cost_usd` ≤ 0.75 × median B | `MONOLITHIC` |
 | 6 | Anything else | `INCONCLUSIVE` |
 
-If §1.2 found `total_cost_usd` uninterpretable, or §4.0 check 4 found an arm B child's `model` different from its parent's, rules 4 and 5 are evaluated on `total_prompt_tokens` alone, with the substitution stated in the report. Rule 4 keeps the 0.75 token ratio and drops the cost conjunct. Rule 5 is median A `total_prompt_tokens` ≤ 0.75 × median B. The 0.75 ratios are otherwise not revisited.
+If §1.2 found `total_cost_usd` uninterpretable, rules 4 and 5 are evaluated on `total_prompt_tokens` alone, with the substitution stated in the report.
 
 Median `peak_parent_prompt_tokens` is reported in every case and decides nothing. It is the mechanism behind rules 2 and 4; if it did not move, say so, because that means arm B's children were not taking the context.
-
-### 6.0 If VOID
-
-Do not evaluate rules 1–6. Do not apply 6.A–6.D. Do not write a §5 verdict of `NEITHER`. Six failures and six voids look the same in the completion column. Rule 1's sentence — the harness cannot complete a spec'd multi-file change in either architecture — is false when neither architecture was tested. Report which trials are void and why, and stop. A replacement set is a new turn from one commit.
 
 ### 6.A If DELEGATED
 
@@ -434,7 +450,7 @@ Do not evaluate rules 1–6. Do not apply 6.A–6.D. Do not write a §5 verdict 
 ### 6.B If MONOLITHIC
 
 1. Invert the router default: `work` by default, `escalate` on genuine uncertainty. Loosen `selectTier` by dropping `single_file_edit` from the conjunction — `spec_exists && reversible && !unfamiliar_stack && !needs_repo_reasoning` → `work`.
-2. Add retry-on-bound: when `fireBound` trips with `writtenFiles().length > 0`, re-dispatch at `escalate` with the §3.1 checkpoint as the prompt. The cascade at turn granularity, reusing §3.1 rather than adding a mechanism. `edits > 0` is the wrong signal here, for the same reason as §3.1.
+2. Add retry-on-bound: when `fireBound` trips with `edits > 0`, re-dispatch at `escalate` with the §3.1 checkpoint as the prompt. The cascade at turn granularity, reusing §3.1 rather than adding a mechanism.
 3. Replace `maxLoopDepth` as the primary control with `maxTurnPromptTokens` and `maxTurnCostUsd` in `BoundConfig` and `boundReason`, computed from the turn usage already in the telemetry bag. Keep 60 as a backstop.
 4. Close INDEX row 12 with the measured child cache figure and the reason delegation was not adopted.
 
@@ -468,7 +484,7 @@ Do **not** pick. Do **not** run more trials to break the tie in this turn.
 6. `.agent/explain/2026-09-22-ab-results.md` contains 6 trial rows, including failures.
 7. `scripts/report-ab.sql` runs against `telemetry.db` and returns those rows.
 8. INDEX row 12 is closed, or the report states why it could not be.
-9. The six trials record one `HEAD`, and `tests/fixtures/ab/` is byte-identical across those six. `ab-baseline` stays the §3 tag. It does not identify the trial tree. Do not move it.
+9. `tests/fixtures/ab/` is byte-identical across all six trials, checked against the commit the six share — not against `ab-baseline`, which predates the §4.0 fixes. Move the tag to the trial commit, or record the trial commit explicitly in the report and drop the tag reference.
 10. Under 6.A or 6.B: `agent/AGENTS.md` §Models describes the code as it stands and names no model id.
 
 ---
@@ -482,10 +498,12 @@ Do **not** pick. Do **not** run more trials to break the tie in this turn.
 | A later session finds `~/.pi/agent/settings.json` is no longer a symlink into this repo | Stop. `install.sh`'s link was replaced and §1.1's finding no longer holds; re-run §1.1 before anything else. |
 | §1.2 finds the Sol figure matches neither card | `total_cost_usd` is dropped from §5.2 and rules 4 and 5 run on tokens alone. |
 | §2.3 finds children uninstrumented | Arm B is measured from child stdout, §5 rows are flagged, rules 4 and 5 run on parent-only tokens with that stated. |
-| Any arm B trial is killed for `child unbounded` | It counts as not completed. Child bounds move from 6.A step 2 into a prerequisite. |
+| Any arm B trial records 0 child edits across all children | The children did not write. Void, and re-check §4.0's definition assertion before re-running. |
+| In any arm B trial the parent writes a fixture file itself | The parent did the work and the children were decoration, as in void trial 2. That trial is void — instruction alone did not prevent it, so tighten the arm B prompt or scope the parent's tools before re-running. |
+| Arm B children exhaust their own no-progress budget with 0 edits | The child definition cannot write. The trial is **void**, §4.0's assertion was skipped, and every arm B trial to date is void with it. |
+| An arm dies within its first 3 calls at `consecutive tool failures` | A prerequisite is broken, not a bound. The trial is **void**. Diagnose the failing tool call before re-running that arm. |
+| A prerequisite fix changes `HEAD` | Every trial recorded before that commit is void, including ones that ran cleanly. All six re-run from the new commit. |
+| Any arm B trial is killed for `child unbounded` **after §4.0 passes** | It counts as not completed. Child bounds move from 6.A step 2 into a prerequisite. |
 | §3.3 changes the tier chosen for the §4.3 prompts | Record the chosen tier per trial. If arms differ in tier, the trial is void and re-runs with the tier pinned for both. |
-| Median `peak_parent_prompt_tokens` differs by less than 20% between arms | Arm B did not take the context. The set is void and re-runs. The two rows below name the cause when the parent wrote the fixture or the children never edited. Do not repair either by asking the parent more firmly. |
-| An arm B trial has no successful child `edit` or `write` | That trial is void. Delegation did not happen. |
-| An arm B parent successfully `edit`s or `write`s a file under `tests/fixtures/ab/` | That trial is void, even if the gate exits 0. The parent did the work. If the prompt cannot hold, the re-run scopes the parent's tools so it cannot `edit` or `write`. Do not ask more firmly in the prompt. |
-| An arm B child's `model` differs from the parent's | Do not void the trial. Rules 4 and 5 for the set run on tokens alone (§4.0 check 4). Do not add a model id to `.pi/agents/implement.md`. |
-| `SPEC-delegation-ab.md` differs from `HEAD` when a trial starts | Void the set. The agent-dir symlink points at the working tree. Commit, then start a fresh six from that commit. |
+| Median `peak_parent_prompt_tokens` differs by less than 20% between arms | Arm B did not delegate. Trials void; fix the arm B prompt and re-run. |
+| Any stage exceeds $6 or 80 model calls | Stop, report the cost and what was completed, and start the remainder as a new turn. |
