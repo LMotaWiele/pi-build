@@ -70,7 +70,7 @@
   "bounds": {
     "enabled": true,
     "maxLoopDepth": 60,
-    "maxTurnWallClockMs": 600000,
+    "maxTurnWallClockMs": 1800000,
     "maxConsecutiveToolFailures": 3,
     "noProgressReads": 6
   },

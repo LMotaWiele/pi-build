@@ -4,9 +4,11 @@ The numbers below are copied from the local telemetry databases. Those files sta
 
 | Run | Database | Commit | What it is |
 |---|---|---|---|
-| Void pair before §4.0 | `/tmp/pi-build-ab/telemetry.db` | `bd51f93` | Two trials, both void. See SPEC §4.3a. |
-| Six at `9d81e6b` | `/tmp/pi-build-ab-set/telemetry.db` | `9d81e6b` | Full set. Rule 0: `VOID`. |
-| Re-run, stopped | `/tmp/pi-build-ab-set2/telemetry.db` | `f8edcd2` | Two trials. Not a set of six. Not scored. |
+| Void pair before §4.0 | void-pair telemetry database | `bd51f93` | Two trials, both void. See SPEC §4.3a. |
+| Six at `9d81e6b` | six-trial telemetry database | `9d81e6b` | Full set. Rule 0: `VOID`. |
+| Re-run, stopped | stopped re-run telemetry database | `f8edcd2` | Two trials. Not a set of six. Not scored. |
+
+The database directories are listed in `docs/README.md`. This file does not repeat them: the notes check rejects the repository name under `.agent/`.
 
 Catalog dollars are the §1.2 card (codex Sol 5 / 0.50 / 30). They are not the Grok tripwire. Pi rows are the measurement.
 

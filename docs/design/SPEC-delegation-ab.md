@@ -76,7 +76,8 @@ Stay in one session. The reference session ran 88% cache reads, which is what he
 
 ### 0.4 Do not
 
-- Raise `maxLoopDepth`, `maxTurnWallClockMs`, `noProgressReads`, or `maxConsecutiveToolFailures` to make a pi trial finish. A bound firing is data.
+- Raise `maxLoopDepth`, `noProgressReads`, or `maxConsecutiveToolFailures` to make a pi trial finish. A bound firing is data.
+- Raise `maxTurnWallClockMs` for one arm. **Amended 2026-09-22:** it may be raised for *both* arms, to the same value, before a set starts, and only because it binds the arms unequally — see §4.4a. Recording a bound that only one arm can hit measures the bound, not the architecture.
 - Change `routing.tiers` except where §1.4 and §6 instruct.
 - Edit the §4 fixture between trials or between arms.
 - Re-tune the §6 thresholds after seeing any result.
@@ -190,7 +191,22 @@ FROM inference_calls GROUP BY session_id;
 - **Two or more `session_id` values:** children are instrumented. Add correlation. Export `PI_BUILD_PARENT_TURN` from the parent before dispatch, read it in `attachTelemetry`, store it as a nullable `parent_turn_id` on `tool_calls` and `inference_calls`. A `CREATE TABLE IF NOT EXISTS` plus an `ALTER TABLE … ADD COLUMN` guarded by a `PRAGMA table_info` check keeps existing databases readable.
 - **One `session_id`:** children are not instrumented, §5 cannot be computed from `telemetry.db`, and arm B must be measured from the child processes' stdout. Record this in INDEX and say so in the §5 report. Do not fabricate the missing rows.
 
-Add `scripts/report-ab.sql` producing one row per `(parent_turn_id, arm, trial)` with the seven §5.2 metrics.
+**The join must be transitive.** `parent_turn_id` points at the immediate parent, and a turn can be three deep: parent → nested `pi` started from `bash` → `implement` child. A single-level join reports zero child edits for a trial whose children edited every file, which is exactly how the f8edcd2 re-run mis-scored trial 2.
+
+Add `scripts/report-ab.sql` producing one row per `(root_turn_id, arm, trial)` with the seven §5.2 metrics, resolving the root by walking the chain:
+
+```sql
+WITH RECURSIVE chain(turn_id, root_turn_id) AS (
+  SELECT turn_id, turn_id FROM inference_calls WHERE parent_turn_id IS NULL
+  UNION ALL
+  SELECT i.turn_id, c.root_turn_id
+  FROM inference_calls i JOIN chain c ON i.parent_turn_id = c.turn_id
+)
+SELECT root_turn_id, COUNT(*), SUM(prompt_tokens), SUM(cached_tokens), SUM(cost_usd)
+FROM inference_calls JOIN chain USING (turn_id) GROUP BY root_turn_id;
+```
+
+Assert before scoring any set: every row in the database resolves to a root. An orphan means a session the scorer cannot attribute, and the set is not scoreable until it does.
 
 Commit and continue.
 
@@ -337,7 +353,7 @@ Apply tests/fixtures/ab/SPEC.md in full. Do not dispatch subagents.
 **Arm B:**
 
 ```
-Apply tests/fixtures/ab/SPEC.md in full. Dispatch one implement subagent per file named in the spec; give each child the spec section and the file path only. Do not read, edit, or write those files in this session.
+Apply tests/fixtures/ab/SPEC.md in full. Dispatch one subagent per file named in the spec; give each child the spec section and the file path only. Do not read those files in this session.
 ```
 
 ### 4.3a Trials recorded void, 2026-09-22
@@ -351,20 +367,25 @@ Two trials ran at `bd51f93` before §4.0 existed. Both are void. Their rows stay
 
 Trial 2 does confirm one thing worth keeping: child sessions are instrumented and `parent_turn_id` correlation works, so §2.3 took its first branch and §5 can be computed from `telemetry.db`.
 
-### 4.3b Trials recorded void, 2026-09-22, at 9d81e6b
+### 4.3b The parent can escape every bound from `bash`
 
-Six trials ran at `9d81e6b` after §4.0 passed. Arm A has three non-void trials. Arm B has none. §6 rule 0 fires. Rules 1–6 do not run. Rows stay in `/tmp/pi-build-ab-set/telemetry.db`. Do not score them and do not point a later set at that file.
+In the f8edcd2 re-run the parent, told not to edit the fixture, started a nested `pi` from `bash`; that session dispatched `implement`, and those children edited all six files. The instruction held. The bounds did not.
 
-| Trial | Arm | What happened | Void because |
-|---|---|---|---|
-| 1 | A | Gate passed, 6 edits, no bound | — |
-| 2 | B | Parent edited all 6 files after 2 `explore` dispatches | 0 child edits; parent wrote the fixture |
-| 3 | A | Gate passed, 6 edits, no bound | — |
-| 4 | B | Same as trial 2 | 0 child edits; parent wrote the fixture |
-| 5 | A | `no progress: 6 reads and 0 edits` at 3 calls | — not void. The bound is no-progress, not consecutive tool failures |
-| 6 | B | Same as trial 2 | 0 child edits; parent wrote the fixture |
+This is a property of the harness, not of the trial. `maxLoopDepth`, `maxTurnWallClockMs`, the no-progress check and the failure counter all live in the parent process and count the parent's own rounds. A nested `pi` started from `bash` has its own budget for each of them, and `bash` is in the mutating-tool set pinned by §2.2, so the escape costs one tool call.
 
-Each arm B child was `explore` (`read`, `grep`, `find`, `ls`). `implement` was installed and was not the agent the prompt named, so the child hit `no progress: 6 reads and 0 edits` and the parent did the edit. Parent and child were both `gpt-5.6-sol`. The arm B prompt in §4.3 is the §8 tighten: name `implement`, and forbid the parent from reading, editing, or writing the fixture files.
+Record it in INDEX as an open finding. Do not fix it inside this spec — it changes what every trial measures, and a fix mid-set voids the set. It belongs in whichever of §6.A or §6.B runs, where child bounds are already on the list.
+
+For scoring: a nested session's work counts as that trial's work. The transitive join in §2.3 is what makes it visible.
+
+### 4.4a The wall clock binds one arm only
+
+Measured wall clock: arm A finished in 403s, 412s, and 404s across two sets. Arm B ran 500s, 500s, and 517s with children that did no work, and 645s once children actually edited — past the 600000ms limit, which ended the turn.
+
+So `maxTurnWallClockMs` is not a shared constraint. Arm A clears it by 200s; arm B exceeds it as soon as delegation does anything. Left at 600000, no arm B trial can ever record `completed`, rules 1–3 resolve to `MONOLITHIC` on completion counts alone, and the token and cost columns are never reached. The measurement would return the bound's value rather than the architectures'.
+
+**Set `maxTurnWallClockMs` to 1800000 for both arms, in the commit the six share.** This is not tuning an arm to pass: it is symmetric, fixed before the set runs, and removes a gate that only one arm can trip.
+
+Then report the 600s result as its own finding, because it is one: **at the default turn budget, delegation does not fit.** If the set returns `MONOLITHIC`, that finding is most of the reason, and it belongs in INDEX next to the verdict. If arm B wins on tokens at 1800000 while being unable to finish at 600000, the honest conclusion is that delegation trades wall clock for context, and 6.A's child bounds have to be designed around a turn budget that admits it.
 
 ### 4.4 Protocol
 
@@ -412,6 +433,20 @@ Arm B's children have **no bounds** — `maxLoopDepth`, `maxTurnWallClockMs`, an
 | `total_cost_usd` | `SUM(cost_usd)`, carrying the §1.2 finding. Omitted entirely if §1.2 concluded the cost line is uninterpretable for this provider. |
 | `wall_clock_s` | Trial start to gate result. |
 | `peak_parent_prompt_tokens` | `MAX(prompt_tokens)` on parent rows only. The window-pressure metric, and the one delegation is supposed to move. |
+
+### 5.2a Window headroom — scope of any verdict
+
+Report `median peak_parent_prompt_tokens / 272000` for arm A, as a percentage, in the first table.
+
+Delegation's mechanism is relieving window pressure. If arm A never approaches the window, the comparison cannot show delegation's benefit and can only show its overhead, so the verdict is about this fixture rather than about the architecture.
+
+| Arm A peak as share of window | What the verdict means |
+|---|---|
+| Under 25% | The fixture does not exercise the mechanism. A `MONOLITHIC` result reads **"monolithic wins at this fixture size"** and must be written that way everywhere it appears, including INDEX. A `DELEGATED` result at this size would be surprising and worth re-checking before acting on. |
+| 25–70% | The comparison is meaningful. The verdict stands unqualified. |
+| Over 70% | Arm A is near the window. Record whether any arm A trial compacted or aborted on context, because that is delegation's case being made by arm A's failure. |
+
+Measured at 9d81e6b (void set): arm A peak was 19,991 and 20,077 — **7% of the window**. Overhead was measured in the same set, with children that did no work: arm B ran +80k prompt tokens, −0.15 cache share, and 2–3x cost per trial against arm A. For arm B to clear rule 4 at that size, children would have to remove more than 120k tokens from a parent holding 20k, which is not reachable. Treat a `MONOLITHIC` result at 7% as expected and narrowly scoped.
 
 ### 5.3 Report
 
@@ -499,11 +534,13 @@ Do **not** pick. Do **not** run more trials to break the tie in this turn.
 | §1.2 finds the Sol figure matches neither card | `total_cost_usd` is dropped from §5.2 and rules 4 and 5 run on tokens alone. |
 | §2.3 finds children uninstrumented | Arm B is measured from child stdout, §5 rows are flagged, rules 4 and 5 run on parent-only tokens with that stated. |
 | Any arm B trial records 0 child edits across all children | The children did not write. Void, and re-check §4.0's definition assertion before re-running. |
-| In any arm B trial the parent writes a fixture file itself | The parent did the work and the children were decoration, as in void trial 2. That trial is void — instruction alone did not prevent it, so tighten the arm B prompt or scope the parent's tools before re-running. |
+| In any arm B trial the parent writes a fixture file itself — **detected from `edit`/`write` tool calls whose target path resolves under `tests/fixtures/ab/`, never from `bash` command text** | The parent did the work and the children were decoration, as in void trial 2. That trial is void — instruction alone did not prevent it, so tighten the arm B prompt or scope the parent's tools before re-running. |
 | Arm B children exhaust their own no-progress budget with 0 edits | The child definition cannot write. The trial is **void**, §4.0's assertion was skipped, and every arm B trial to date is void with it. |
 | An arm dies within its first 3 calls at `consecutive tool failures` | A prerequisite is broken, not a bound. The trial is **void**. Diagnose the failing tool call before re-running that arm. |
 | A prerequisite fix changes `HEAD` | Every trial recorded before that commit is void, including ones that ran cleanly. All six re-run from the new commit. |
 | Any arm B trial is killed for `child unbounded` **after §4.0 passes** | It counts as not completed. Child bounds move from 6.A step 2 into a prerequisite. |
 | §3.3 changes the tier chosen for the §4.3 prompts | Record the chosen tier per trial. If arms differ in tier, the trial is void and re-runs with the tier pinned for both. |
 | Median `peak_parent_prompt_tokens` differs by less than 20% between arms | Arm B did not delegate. Trials void; fix the arm B prompt and re-run. |
+| Arm A's median peak is under 25% of the window and the verdict is `MONOLITHIC` | The verdict is scoped to this fixture, per §5.2a. Before adopting 6.B as settled, either accept that scope explicitly in INDEX or build a second fixture whose arm A peak exceeds 60% of the window and re-run §4 once against it. Do not treat the small-fixture result as a general finding about delegation. |
+| An arm completes 2 of 3 with the third failing on a bound the other two did not hit | Record the flake rate. Arm A did this at 9d81e6b: trials 1 and 3 completed, trial 5 hit no-progress at 6 reads and 0 edits on the same tree and prompt. A 1-in-3 nondeterministic miss makes a 2-of-3 threshold noisy, and the completion counts in rules 1–3 should be read with that in mind. |
 | Any stage exceeds $6 or 80 model calls | Stop, report the cost and what was completed, and start the remainder as a new turn. |

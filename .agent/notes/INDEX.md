@@ -44,6 +44,7 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 | 22 | pi 0.87.0 registered tools: bash, edit, find, grep, ls, powershell, read, write. File-mutating tools are bash, edit, powershell, and write. countsAsEdit includes that set. | SPEC-delegation-ab §2.2 | 2026-09-22 |
 | 23 | A subagent child writes inference_calls under its own session_id. The 2026-09-22 probe returned two session ids. The child call was 4660 prompt tokens, 0 cached, on gpt-5.6-sol. parent_turn_id correlates that child to the parent turn. One child call does not measure multi-call child cache. | SPEC-delegation-ab §2.3 | 2026-09-22 |
 | 24 | The printed cost for openai-codex/gpt-5.6-sol is the catalog card 5 / 0.50 / 30, not the promo card 4 / 0.40 / 20 and not a subscription invoice. openai-codex/gpt-5.6-terra matched input 2 and output 12. Row 3's promo rates are not what the cost line prints. | SPEC-delegation-ab §1.2 | 2026-09-22 |
+| 25 | The parent escapes maxLoopDepth, maxTurnWallClockMs, the no-progress check, and the failure counter by starting a nested pi from bash. Those bounds count the parent process only, and bash is in the mutating set, so the escape costs one tool call. Leave the escape unfixed during the delegation measurement; it belongs with child bounds. | SPEC-delegation-ab §4.3b | 2026-09-22 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.

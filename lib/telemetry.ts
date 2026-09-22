@@ -45,6 +45,9 @@ interface TelemetryBag {
   activeTier: string;
   activeModel: string;
   messageStarted: Map<string, number>;
+  /** First resolution wins. A later subagent dispatch rewrites the env for children and must not retarget this process. */
+  parentTurnResolved: boolean;
+  resolvedParentTurnId: string | null;
 }
 
 function emptyUsage(): TurnUsage {
@@ -86,6 +89,8 @@ function freshBag(): TelemetryBag {
     activeTier: "unassigned",
     activeModel: "",
     messageStarted: new Map(),
+    parentTurnResolved: false,
+    resolvedParentTurnId: null,
   };
 }
 
@@ -189,9 +194,11 @@ export function writtenFiles(): string[] {
 
 export function beginUserTurn(sessionId: string, prompt: string): void {
   const state = bag();
+  const previousTurnId = state.turn.turnId;
+  const turnId = randomUUID();
   state.turn = {
     sessionId,
-    turnId: randomUUID(),
+    turnId,
     loopIndex: 0,
     started: Date.now(),
     consecutiveFailures: 0,
@@ -199,6 +206,12 @@ export function beginUserTurn(sessionId: string, prompt: string): void {
     edits: 0,
     prompt,
   };
+  // Publish this turn so a nested pi started from bash inherits it.
+  // A child process already has its parent's id in the env; leave that in place.
+  const envId = process.env.PI_BUILD_PARENT_TURN?.trim() ?? "";
+  if (!envId || (previousTurnId && envId === previousTurnId)) {
+    process.env.PI_BUILD_PARENT_TURN = turnId;
+  }
   state.openNote = null;
   state.filesWritten.length = 0;
   state.turnUsage = emptyUsage();
@@ -374,13 +387,21 @@ interface Db {
   prepare(sql: string): Statement;
 }
 
-/** Child pi processes inherit this. Parent rows stay null. */
+/**
+ * The parent turn this process was started under.
+ * Captured once: `markParentTurnForDispatch` later rewrites the env so grandchildren
+ * inherit this process, and that rewrite must not retarget rows already in flight.
+ * A nested pi started from bash has depth 0 and still inherits the env. Its rows
+ * keep that parent. A process whose env is its own turn id is a root.
+ */
 export function currentParentTurnId(): string | null {
-  const depth = Number(process.env.PI_SUBAGENT_DEPTH ?? "0");
-  const id = process.env.PI_BUILD_PARENT_TURN;
-  if (!Number.isFinite(depth) || depth <= 0) return null;
-  if (!id || !id.trim()) return null;
-  return id.trim();
+  const state = bag();
+  if (state.parentTurnResolved) return state.resolvedParentTurnId;
+  const own = state.turn.turnId;
+  const id = process.env.PI_BUILD_PARENT_TURN?.trim() ?? "";
+  state.resolvedParentTurnId = id && id !== own ? id : null;
+  state.parentTurnResolved = true;
+  return state.resolvedParentTurnId;
 }
 
 export function markParentTurnForDispatch(toolName: string): void {
