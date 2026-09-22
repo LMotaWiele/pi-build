@@ -108,7 +108,6 @@ export function boundCheckpointLine(reason: string, written: string[], resumeFro
 }
 
 export async function runBoundAbort(input: {
-  edits: number;
   reason: string;
   written: string[];
   resumeFrom: string;
@@ -125,14 +124,13 @@ export async function runBoundAbort(input: {
 }
 
 export async function checkpointOnBound(input: {
-  edits: number;
   reason: string;
   written: string[];
   resumeFrom: string;
   queueAppend: (item: string, source: string) => void | Promise<void>;
   setRecap: (line: string) => void;
 }): Promise<void> {
-  if (input.edits <= 0) return;
+  if (input.written.length === 0) return;
   const line = boundCheckpointLine(input.reason, input.written, input.resumeFrom);
   try {
     await input.queueAppend(line, "SPEC-delegation-ab §3.1");
@@ -275,7 +273,6 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
         }
       }
       void runBoundAbort({
-        edits: snap.edits,
         reason,
         written,
         resumeFrom: firstUnwrittenPath(noteText, written),

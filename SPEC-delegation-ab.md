@@ -56,10 +56,11 @@ Corrected reference, for calibration:
 
 Commit after §2, after §3 (tagged `ab-baseline`), and after §6. Those are `git commit` calls inside the turn, not places to hand back.
 
-**Two things do stop the turn, and only two:**
+**Three things do stop the turn, and only three:**
 
 1. **§6 lands on `NEITHER` or `INCONCLUSIVE`.** The next action is a human decision and the thresholds exist precisely so that an agent cannot argue past them.
-2. **The §0.2 tripwire fires.**
+2. **§6 lands on `VOID`.** Fewer than three non-void trials in either arm. Rules 1–6 do not run. Report the void reasons and stop. Do not append trials onto a void set.
+3. **The §0.2 tripwire fires.** There is no per-stage budget. $25 or 250 model calls, for the whole run, is the only cost stop.
 
 Everything else — a failed assertion, a void trial, a branch in §1.2 or §2.3 — is handled by a conditional written into the section itself. Follow it and keep going.
 
@@ -193,16 +194,16 @@ Commit and continue.
 
 `extensions/routing.ts`, `fireBound`, records a telemetry row, appends a `pi-build-bound` entry, logs, and calls `ctx.abort()`. The partial tree survives; the knowledge of where the turn got to does not. The next prompt starts from a cleared `filesWritten` and an empty recap.
 
-Before `ctx.abort()`, and only when `turnSnapshot().edits > 0`:
+Before `ctx.abort()`, and only when `writtenFiles().length > 0`:
 
 1. `queue_append` one row: `bounded at <reason>; wrote <writtenFiles().join(", ")>; resume from <first unwritten path named in the open note, or "(unknown)">`, source `SPEC-delegation-ab §3.1`.
 2. `setLastRecap` with the same line, so `orientationBlock` carries it into the next turn's cached prefix.
 
-When `edits === 0` the turn produced nothing to resume from — log and abort as now, no queue row. A queue that accumulates empty bound rows is a log, which INDEX forbids.
+`edits` stays the counter for the no-progress bound. Bash and powershell increment it, which is the right signal for "this turn is not stuck reading." It is the wrong signal for a resume point. A bash-only turn has `edits > 0` and an empty `writtenFiles()`, and the row would read `wrote` with nothing after it. When `writtenFiles()` is empty, log and abort as now, no queue row. A queue that accumulates empty bound rows is a log, which INDEX forbids.
 
 Failure of either write must not prevent `ctx.abort()`. Wrap both, log on failure, continue.
 
-Test: `edits > 0` produces exactly one queue row and a non-empty recap; `edits === 0` produces neither; a throwing `queue_append` still reaches `ctx.abort()`.
+Test: `writtenFiles().length > 0` produces exactly one queue row and a non-empty recap; an empty `writtenFiles()` produces neither, including when `edits > 0`; a throwing `queue_append` still reaches `ctx.abort()`. An empty list still aborts.
 
 ### 3.2 Explain must not fire on an aborted turn
 
@@ -250,6 +251,20 @@ Commit, tag `ab-baseline`, confirm `./doctor.sh --offline` exits 0, and continue
 
 ## 4. The measurement
 
+### 4.0 Before any trial
+
+Two checks. If either fails, do not start the six.
+
+1. List the subagent definitions this cwd will actually dispatch. From the repository root, `node --experimental-strip-types scripts/subagent-list.mjs` imports `discoverAgents` from the pinned `pi-subagent` package and prints `name`, `source`, and `tools`. It exits 0 only when a definition's tools include `edit` and `write` and do not include `subagent`. If the only definition is `explore`, arm B is not runnable and is not run.
+
+   `pi subagent list` is not a subcommand. Passing those words to `pi` starts a session. Do not do that. `--subagent-max-depth 0` skips discovery, so it is not a listing either.
+
+   The writing definition is `.pi/agents/implement.md`. Tools are `read`, `edit`, `write`. The allowlist does not include `subagent`, so the child cannot dispatch. `sessionPreference` is `ephemeral`, so one call is one file and parallel calls do not share a session. There is no model id; the child inherits the parent's model. The body applies the spec section in the prompt to the single file path in the prompt, and does not read or edit any other path.
+
+2. From `tests/fixtures/ab`, on the unmodified tree, `npx tsc --noEmit && node --test` exits 0. A red gate stops the turn in seconds. Do not discover it by spending a trial.
+
+Adding `.pi/agents/implement.md` moves `HEAD`. §8 requires all six trials to share one commit, so every trial recorded on the previous commit is void by that rule as well. The measurement after this commit is a fresh A, B, A, B, A, B. Do not append.
+
 ### 4.1 What is being compared
 
 Both arms run the **same task, same prompt text, same starting tree**, differing only in whether the work happens in the parent's context or in children.
@@ -284,6 +299,22 @@ Apply tests/fixtures/ab/SPEC.md in full. Do not dispatch subagents.
 Apply tests/fixtures/ab/SPEC.md in full. Dispatch one subagent per file named in the spec; give each child the spec section and the file path only. Do not read those files in this session.
 ```
 
+The child named in that dispatch is `implement` (§4.0). `explore` cannot edit, so a trial that dispatches only `explore` is void.
+
+### 4.3a Trials 1 and 2 are void
+
+Recorded on `bd51f93` (`ab-baseline`) in `/tmp/pi-build-ab/telemetry.db`. Leave that database where it is. Do not delete or amend the rows. Do not point the fresh set at that file. Do not score them under rules 1–6.
+
+**Trial 1, arm A, void.** Parent turn `0fcbeecb-3ec5-47f3-b855-b5affb56e53d`, session `01a0c66f-534a-7493-a945-b180c21796e7`, tier `escalate`, three inference calls. Bound `consecutive tool failures 3` at loop index 2, 24s into the turn. The 148s wall clock is that abort plus the recap subprocess. The three failures were reads of `tests/fixtures/ab/types.ts`, `tests/fixtures/ab/parse.ts`, and `tests/fixtures/ab/format.ts`. Those paths are not in the fixture; the sources are under `src/`. The unmodified fixture gate had already exited 0, before the trial. This is not a monolithic result, and it is not a red `tsc` gate.
+
+**Trial 2, arm B, void.** Parent turn `8a6f6b69-4ebb-4068-9228-4cb936a9278f`, session `01a0c671-9705-7452-8c93-9f18210d325b`, tier `escalate`. Eight `subagent` calls, all successful. Eighteen sessions: the parent plus seventeen children, and every child inference row carries that `parent_turn_id`. The only installed definition was `explore` (`read`, `grep`, `find`, `ls`). Children recorded zero edits. Nine child bound rows are `no progress: 6 reads and 0 edits`, which is what a read-only agent does when told to edit. The parent process was killed at 720s and the row says `child unbounded`. That label is the kill, not a measurement of delegation. The parent itself edited all six fixture files; those edits do not make the trial a delegated result.
+
+§4.3 assumed a writing child. That child did not exist, so every arm B trial on that tree fails the same way. That is a defect in the spec, not a result.
+
+The result that stands: child sessions are instrumented, and `parent_turn_id` correlates. §2.3 took its first branch. §5 for the fresh set comes from `telemetry.db`.
+
+Both trials are void again because the `implement` definition moves `HEAD`, and §8 voids a set whose trials do not share one commit. The fresh six are the next turn.
+
 ### 4.4 Protocol
 
 6 runs: **A, B, A, B, A, B**.
@@ -292,23 +323,24 @@ Before each trial, in this order:
 
 ```bash
 bash tests/fixtures/ab/reset.sh
-git diff --quiet -- settings/hosts/machina.json agent/models.json agent/AGENTS.md || exit 1
+git diff --quiet -- settings/hosts/machina.json agent/models.json agent/AGENTS.md SPEC-delegation-ab.md || exit 1
 git status --porcelain            # clean apart from the fixture reset
 readlink -f ~/.pi/agent/settings.json   # must resolve inside this repo
+node --experimental-strip-types scripts/subagent-list.mjs
 git rev-parse HEAD                      # record per trial
 ```
 
-The `git diff --quiet` line is not ceremony. Per §1.1, pi loads `settings/hosts/machina.json` from the working tree, so an uncommitted edit to the host file, the model overrides, or the cached prefix changes the harness under measurement with nothing in the trial output to reveal it. A trial that starts dirty is void, not noisy.
+The `git diff --quiet` line is not ceremony. Per §1.1, pi loads `settings/hosts/machina.json` from the working tree, so an uncommitted edit to the host file, the model overrides, or the cached prefix changes the harness under measurement with nothing in the trial output to reveal it. `~/.pi/agent/SPEC-delegation-ab.md` is the same kind of symlink: an uncommitted edit to this file is what the next session reads. A trial that starts dirty is void, not noisy. `scripts/subagent-list.mjs` is §4.0's writing-agent check, repeated before each trial so a session that can no longer edit does not get scored as arm B.
 
 Controls, all mandatory:
 
 - Record `HEAD` per trial. All six must share one commit.
 - `cacheWarming` stays `off`. With a 1800s TTL the gap between runs changes the result; record `gap_since_previous_run_s` per trial.
 - One session per trial. No session reuse.
-- No trial is retried. A crashed or aborted trial is recorded as-is with its bound reason.
+- No trial is retried. A crashed or aborted trial is recorded as-is with its bound reason. A trial §4.0, §4.3a, or §8 marks void is recorded with that reason and is not a failure. Rule 0 counts non-void trials only.
 - Record wall-clock start per trial.
 
-Arm B's children have **no bounds** — `maxLoopDepth`, `maxTurnWallClockMs`, and the no-progress check live in the parent process and do not cross the `execFile` boundary, as `explain.ts` already demonstrates with its bare 180-second timeout. If a child hangs, kill it and record the trial as failed with reason `child unbounded`. That is a cost of arm B, not noise.
+If a child hangs, kill it and record the trial as failed with reason `child unbounded`. That is a cost of arm B, not noise. §4.3a is the exception: trial 2's children were their own pi processes and did fire `no progress: 6 reads and 0 edits`, because the bound extension loads in the child. A kill of a child that has no writing tool is void, not that failure.
 
 ---
 
@@ -339,10 +371,11 @@ Arm B's children have **no bounds** — `maxLoopDepth`, `maxTurnWallClockMs`, an
 
 ## 6. Pre-committed branch
 
-Evaluate in order. First match decides. **Fixed before any trial ran; not revisited.**
+Evaluate in order. First match decides. Rules 1–6 are not revisited after the fresh set starts. Rule 0 was added after §4.3a: a void set and a both-failed set produce the same completion table and opposite conclusions.
 
 | # | If | Then |
 |---|---|---|
+| 0 | Fewer than 3 non-void trials in either arm | `VOID`. Rules 1–6 do not evaluate. |
 | 1 | Neither arm completes in ≥ 2 of 3 | `NEITHER` |
 | 2 | Arm B completes ≥ 2 of 3 and arm A ≤ 1 | `DELEGATED` |
 | 3 | Arm A completes ≥ 2 of 3 and arm B ≤ 1 | `MONOLITHIC` |
@@ -353,6 +386,10 @@ Evaluate in order. First match decides. **Fixed before any trial ran; not revisi
 If §1.2 found `total_cost_usd` uninterpretable, rules 4 and 5 are evaluated on `total_prompt_tokens` alone, with the substitution stated in the report.
 
 Median `peak_parent_prompt_tokens` is reported in every case and decides nothing. It is the mechanism behind rules 2 and 4; if it did not move, say so, because that means arm B's children were not taking the context.
+
+### 6.0 If VOID
+
+Do not evaluate rules 1–6. Do not apply 6.A–6.D. Do not write a §5 verdict of `NEITHER`. Six failures and six voids look the same in the completion column. Rule 1's sentence — the harness cannot complete a spec'd multi-file change in either architecture — is false when neither architecture was tested. Report which trials are void and why, and stop. A replacement set is a new turn from one commit.
 
 ### 6.A If DELEGATED
 
@@ -365,7 +402,7 @@ Median `peak_parent_prompt_tokens` is reported in every case and decides nothing
 ### 6.B If MONOLITHIC
 
 1. Invert the router default: `work` by default, `escalate` on genuine uncertainty. Loosen `selectTier` by dropping `single_file_edit` from the conjunction — `spec_exists && reversible && !unfamiliar_stack && !needs_repo_reasoning` → `work`.
-2. Add retry-on-bound: when `fireBound` trips with `edits > 0`, re-dispatch at `escalate` with the §3.1 checkpoint as the prompt. The cascade at turn granularity, reusing §3.1 rather than adding a mechanism.
+2. Add retry-on-bound: when `fireBound` trips with `writtenFiles().length > 0`, re-dispatch at `escalate` with the §3.1 checkpoint as the prompt. The cascade at turn granularity, reusing §3.1 rather than adding a mechanism. `edits > 0` is the wrong signal here, for the same reason as §3.1.
 3. Replace `maxLoopDepth` as the primary control with `maxTurnPromptTokens` and `maxTurnCostUsd` in `BoundConfig` and `boundReason`, computed from the turn usage already in the telemetry bag. Keep 60 as a backstop.
 4. Close INDEX row 12 with the measured child cache figure and the reason delegation was not adopted.
 
@@ -416,4 +453,4 @@ Do **not** pick. Do **not** run more trials to break the tie in this turn.
 | Any arm B trial is killed for `child unbounded` | It counts as not completed. Child bounds move from 6.A step 2 into a prerequisite. |
 | §3.3 changes the tier chosen for the §4.3 prompts | Record the chosen tier per trial. If arms differ in tier, the trial is void and re-runs with the tier pinned for both. |
 | Median `peak_parent_prompt_tokens` differs by less than 20% between arms | Arm B did not delegate. Trials void; fix the arm B prompt and re-run. |
-| Any stage exceeds $6 or 80 model calls | Stop, report the cost and what was completed, and start the remainder as a new turn. |
+| `SPEC-delegation-ab.md` differs from `HEAD` when a trial starts | Void the set. The agent-dir symlink points at the working tree. Commit, then start a fresh six from that commit. |

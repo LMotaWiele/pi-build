@@ -13,13 +13,12 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("edits > 0 writes one queue row and a recap; zero edits write neither", async () => {
+test("written files write one queue row; an empty list writes neither", async () => {
   const index = fs.readFileSync(path.join(root, ".agent/notes/INDEX.md"), "utf8");
   const before = parseIndex(index).activeNext.length;
   let next = index;
   const recaps: string[] = [];
   await checkpointOnBound({
-    edits: 2,
     reason: "no-progress",
     written: ["src/a.ts"],
     resumeFrom: "src/b.ts",
@@ -37,7 +36,6 @@ test("edits > 0 writes one queue row and a recap; zero edits write neither", asy
   let calls = 0;
   let recap = "";
   await checkpointOnBound({
-    edits: 0,
     reason: "no-progress",
     written: [],
     resumeFrom: "(unknown)",
@@ -52,10 +50,30 @@ test("edits > 0 writes one queue row and a recap; zero edits write neither", asy
   assert.equal(recap, "");
 });
 
+test("an empty written list still aborts and does not queue", async () => {
+  let aborted = false;
+  let calls = 0;
+  await runBoundAbort({
+    reason: "no-progress",
+    written: [],
+    resumeFrom: "(unknown)",
+    queueAppend: () => {
+      calls += 1;
+    },
+    setRecap: () => {
+      calls += 1;
+    },
+    abort: () => {
+      aborted = true;
+    },
+  });
+  assert.equal(aborted, true);
+  assert.equal(calls, 0);
+});
+
 test("a throwing queue_append still reaches abort", async () => {
   let aborted = false;
   await runBoundAbort({
-    edits: 1,
     reason: "loop",
     written: ["src/a.ts"],
     resumeFrom: "src/b.ts",
