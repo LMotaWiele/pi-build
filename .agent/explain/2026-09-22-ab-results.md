@@ -8,6 +8,7 @@ The numbers below are copied from the local telemetry databases. Those files sta
 | Six at `9d81e6b` | six-trial telemetry database | `9d81e6b` | Full set. Rule 0: `VOID`. |
 | Re-run, stopped | stopped re-run telemetry database | `f8edcd2` | Two trials. Not a set of six. Not scored. |
 | Six at `78ce7cb` | thirty-minute telemetry database | `78ce7cb` | Full set. Rule 0: `VOID`. |
+| Six at `4384c58` | peak-rule telemetry database | `4384c58` | Full set. Peak rule: `VOID`. |
 
 The database directories are listed in `docs/README.md`. This file does not repeat them: the notes check rejects the repository name under `.agent/`.
 
@@ -86,3 +87,34 @@ Same-arm spacing, read against cache share and not used to change the order: abo
 The 600s finding stands from the earlier measurement, where arm B reached 645s once children edited. In this set the children did no work, and arm B's walls were 494s, 413s, and 490s, under both the old bound and the 1800000 ms bound.
 
 A repeat of this prompt would dispatch the same read-only child. The set is not re-run until the child that is actually dispatched can write.
+
+## Six at 4384c58
+
+Shared head `4384c58`. Turn budget 1800000 ms on both arms. No orphan rows. 108 inference calls, catalog $1.91. That is the measurement ledger.
+
+Every trial completed. No trial row is void: the gate passed, no bound fired, and each arm B trial recorded 6 child edits. The set is void because the median parent peaks differ by 13%, under the 20% peak rule. Those rows stay out of the §6 completion tallies.
+
+| Trial | Arm | Completed | Void | Bound | Prompt tokens | Cache share | Completion | Cost | Peak parent | Wall | Idle gap |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | A | yes | — | — | 115704 | 0.6925 | 2503 | 0.293034 | 13058 | 153.354 | — |
+| 2 | B | yes | — | — | 160574 | 0.6688 | 3590 | 0.395065 | 11239 | 152.608 | 1.081 |
+| 3 | A | yes | — | — | 83912 | 0.7337 | 2163 | 0.207394 | 13642 | 127.652 | 1.081 |
+| 4 | B | yes | — | — | 138989 | 0.6262 | 3281 | 0.349083 | 11867 | 142.586 | 1.065 |
+| 5 | A | yes | — | — | 127083 | 0.8944 | 2457 | 0.227717 | 18224 | 123.213 | 1.069 |
+| 6 | B | yes | — | — | 166888 | 0.6481 | 3559 | 0.434104 | 12415 | 156.105 | 1.045 |
+
+Set void, kept out of the tallies:
+
+- Arm A median peak is 13642. That is 13642 / 272000 = 5.0% of the window. Arm B median peak is 11867. The absolute difference is 13.0% of arm A's median. The peak rule voids the set.
+- The arm B prompt dispatched implement on all three trials. Each trial ran six children. Each child edited one fixture file. The parent recorded no edit or write under the fixture. The prompt is not the defect. A parent holding about 5% of the window cannot drop 20% by handing files to children. This prompt is not re-run on this fixture to chase that gap.
+- Rules 1–6 do not run. §6.A and §6.B were not applied.
+
+The parent was gpt-5.6-sol on every trial. Of 18 child turns, 12 were gpt-5.6-sol at escalate and 6 were gpt-5.6-terra at work. Two children in each arm B trial stayed on the work tier. A child model differed from the parent, so a token comparison would have replaced dollars in rules 4 and 5. Those rules were not applied.
+
+Child cache, on turns that edited a fixture file and are tied to the trial root. One Sol child in trial 2: the first two calls cached nothing, at 3841 and 3985 prompt tokens; the third read 3712 cached tokens against 410 prompt tokens; the fourth read 3968 against 306. One Terra child in trial 2: each of three calls read 3584 cached tokens, with prompt tokens 247, 435, and 605. INDEX row 12 is closed on that measurement.
+
+The read-only user agent was held aside for the set, so a live session could not dispatch it. It is restored afterward.
+
+Same-arm spacing sat inside the 1800s cache TTL: about 154s and 144s before arm A's later trials, and about 129s and 124s before arm B's. The recorded idle gap between consecutive runs is about 1s. Arm A's cache share rose from 0.6925 to 0.8944. Arm B stayed between 0.6262 and 0.6688. That column was not used to change the order.
+
+The earlier 645s wall was a writing child whose walkthrough sat until its timeout. In this set every trial finished between 123s and 156s, inside both the 600s default and the 1800000 ms host bound.

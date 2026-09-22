@@ -23,3 +23,4 @@ Trial databases and runner logs under `/tmp` are local measurement output. They 
 | Six at `9d81e6b` | `/tmp/pi-build-ab-set/telemetry.db` |
 | Stopped re-run at `f8edcd2` | `/tmp/pi-build-ab-set2/telemetry.db` |
 | Six at `78ce7cb` | `/tmp/pi-build-ab-set3/telemetry.db` |
+| Six at `4384c58` | `/tmp/pi-build-ab-set4/telemetry.db` |
