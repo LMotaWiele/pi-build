@@ -1,0 +1,45 @@
+{
+  "_comment": "pi-build v0.1 — symlink to ~/.pi/agent/models.json. promptCache must be declared for every custom model or pi cannot reason about cache lifetimes and the status bar will under-report. Rates are $/M; VERIFY each against the provider's live pricing page before trusting the cost readout.",
+
+  "models": {
+    "openai/gpt-5.6-luna": {
+      "api": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "${OPENAI_API_KEY}",
+      "pricing": { "input": 0.20, "cachedInput": 0.02, "output": 1.20 },
+      "promptCache": { "enabled": true, "lifetimeSeconds": 3600 },
+      "contextWindow": 400000
+    },
+
+    "openai/gpt-5.6-terra": {
+      "api": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "${OPENAI_API_KEY}",
+      "pricing": { "input": 2.00, "cachedInput": 0.20, "output": 12.00 },
+      "promptCache": { "enabled": true, "lifetimeSeconds": 3600 },
+      "contextWindow": 400000
+    },
+
+    "openai-codex/gpt-5.6-sol": {
+      "_comment": "Subscription OAuth via `/login`. No pricing block: consumption is quota, not dollars. cacheWarming must never fire here — warming a subscription-backed session spends quota for zero dollar saving.",
+      "provider": "openai-codex",
+      "promptCache": { "enabled": true },
+      "cacheWarming": false
+    },
+
+    "typesafe/jev-1.13": {
+      "_comment": "NOT a chat model. Called via POST https://openrouter.ai/api/alpha/decisions with {model, state, questions}. Does not appear in GET /api/v1/models. Declared here for documentation only — the adapter calls it directly, pi does not route to it.",
+      "_endpoint": "https://openrouter.ai/api/alpha/decisions",
+      "apiKey": "${OPENROUTER_API_KEY}",
+      "pricing": { "input": 0.042, "output": 0.00 },
+      "contextWindow": 32000,
+      "_alternative": "TypeSafe direct: model id jev-1.13.0 or jev-latest (rejects the bare 1.13), 64k nominal but state+longest question still capped at 32k, errors as {detail: ...}"
+    }
+  },
+
+  "_retired_baseline": {
+    "_comment": "Derived from turn_completed.costUsdTicks, exact least-squares fit over 12 turns. Kept as the comparison anchor for §7 acceptance metrics.",
+    "grok-4.6-build": { "input": 3.40, "cachedInput": 0.85, "output": 10.20 },
+    "_cacheRatio": "25% of input, vs the 10% convention — 43% of the measured bill"
+  }
+}

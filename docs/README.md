@@ -1,0 +1,18 @@
+# Documentation
+
+Documents for this project live in this repository.
+
+| What | Where |
+|---|---|
+| Specs | `docs/design/` |
+| Measurement spec, also at the repo root | `SPEC-delegation-ab.md` is the same text as `docs/design/SPEC-delegation-ab.md` |
+| Trial writeup | `.agent/explain/` |
+| Notes and the queue | `.agent/notes/INDEX.md` |
+
+Pi loads this repository. `~/.pi/agent/settings.json`, `AGENTS.md`, `extensions`, and `skills` are symlinks into it. The host file pi reads is `settings/hosts/machina.json`.
+
+`docs/reference/` is a snapshot copied from the old `Documents/pi_build` tree. It is not what the live process loads. `docs/reference/machina.json` is not `settings/hosts/machina.json`.
+
+`implement` is `.pi/agents/implement.md` in this repo. `explore` is `~/.pi/agent/agents/explore.md`, outside this repo.
+
+Trial databases and runner logs under `/tmp` are local measurement output. They are not the documents. The writeup that interprets them is `.agent/explain/`.
