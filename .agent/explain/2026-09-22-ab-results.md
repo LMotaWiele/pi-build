@@ -7,6 +7,7 @@ The numbers below are copied from the local telemetry databases. Those files sta
 | Void pair before §4.0 | void-pair telemetry database | `bd51f93` | Two trials, both void. See SPEC §4.3a. |
 | Six at `9d81e6b` | six-trial telemetry database | `9d81e6b` | Full set. Rule 0: `VOID`. |
 | Re-run, stopped | stopped re-run telemetry database | `f8edcd2` | Two trials. Not a set of six. Not scored. |
+| Six at `78ce7cb` | thirty-minute telemetry database | `78ce7cb` | Full set. Rule 0: `VOID`. |
 
 The database directories are listed in `docs/README.md`. This file does not repeat them: the notes check rejects the repository name under `.agent/`.
 
@@ -44,4 +45,44 @@ This is not a completed set of six. Rule 0 is not applied to it. The join has to
 
 ## Not decided
 
-§6.A and §6.B were not applied. INDEX row 12 stays open: child cache on a real delegated edit was not measured on the outer turn, because the only child edits in the re-run sit on a nested turn the scorer did not join.
+§6.A and §6.B were not applied to the sets above. INDEX row 12 stays open: child cache on a real delegated edit was not measured on an attributable turn.
+
+## Six at 78ce7cb
+
+Shared head `78ce7cb`. Turn budget 1800000 ms on both arms. Every inference row is `escalate` / `gpt-5.6-sol`. No orphan rows, and every turn resolves to its trial. Catalog total $2.99 across 125 inference calls. That is the measurement ledger.
+
+| Trial | Arm | Completed | Void | Bound | Prompt tokens | Cache share | Completion | Cost | Peak parent | Wall | Idle gap |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | A | yes | — | — | 103511 | 0.7593 | 2321 | 0.233521 | 16679 | 399.316 | — |
+| 2 | B | no | 0 child edits | no progress: 6 reads and 0 edits | 223605 | 0.7339 | 11605 | 0.727743 | 20659 | 494.499 | 1.067 |
+| 3 | A | yes | — | — | 123664 | 0.7763 | 1868 | 0.242360 | 13439 | 391.611 | 1.066 |
+| 4 | B | no | 0 child edits | no progress: 6 reads and 0 edits | 308594 | 0.7151 | 9084 | 0.822466 | 18296 | 413.060 | 1.042 |
+| 5 | A | yes | — | — | 229684 | 0.9045 | 2752 | 0.296132 | 19878 | 427.775 | 1.053 |
+| 6 | B | no | 0 child edits; parent wrote a fixture file | no progress: 6 reads and 0 edits | 224671 | 0.7047 | 6711 | 0.665933 | 16809 | 489.718 | 1.042 |
+
+Voids, kept out of the tallies and out of the medians:
+
+- Trials 2, 4, and 6 each dispatched `explore`. That definition has `read`, `grep`, `find`, and `ls`. The children recorded no `edit` or `write`. Several of them stopped on `no progress: 6 reads and 0 edits` inside about 30s. `implement` was installed, has `edit` and `write`, and was not named in the prompt. The §4.0 check passed before the set; the agent that ran was still the read-only one.
+- Trial 6's parent then edited the fixture itself. The successful `edit` paths are `src/types.ts`, `src/parse.ts`, `src/format.ts`, `src/store.ts`, `src/report.test.ts`, and `src/validate.ts`. Trials 2 and 4's parents did not.
+- Trial 4's dispatch text asked for `gpt-5.6-terra` and `gpt-5.6-luna`. Every inference row for that trial is still `gpt-5.6-sol`.
+
+Arm A, three non-void trials. Median is the middle value.
+
+| Metric | Values | Median | Range |
+|---|---|---|---|
+| Prompt tokens | 103511, 123664, 229684 | 123664 | 103511–229684 |
+| Cache share | 0.7593, 0.7763, 0.9045 | 0.7763 | 0.7593–0.9045 |
+| Completion tokens | 2321, 1868, 2752 | 2321 | 1868–2752 |
+| Cost | 0.233521, 0.242360, 0.296132 | 0.242360 | 0.233521–0.296132 |
+| Wall | 399.316, 391.611, 427.775 | 399.316 | 391.611–427.775 |
+| Peak parent | 16679, 13439, 19878 | 16679 | 13439–19878 |
+
+Arm A median peak 16679 / 272000 = 6.1% of the window. Arm B has no non-void trials, so it has no median.
+
+Rule 0: arm A has 3 non-void trials, arm B has 0. The verdict is `VOID`. Rules 1–6 do not run. §6.A and §6.B were not applied.
+
+Same-arm spacing, read against cache share and not used to change the order: about 497s and 415s before arm A's later trials, and about 394s and 430s before arm B's. All of those sit inside the 1800s cache TTL. The recorded idle gap between consecutive runs is about 1s. Arm A's cache share rose to 0.9045 on trial 5; arm B's fell from 0.7339 to 0.7047.
+
+The 600s finding stands from the earlier measurement, where arm B reached 645s once children edited. In this set the children did no work, and arm B's walls were 494s, 413s, and 490s, under both the old bound and the 1800000 ms bound.
+
+A repeat of this prompt would dispatch the same read-only child. The set is not re-run until the child that is actually dispatched can write.
