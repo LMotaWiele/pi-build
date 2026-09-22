@@ -4,16 +4,16 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { selectExplainModel, stringMap } from "../lib/models.ts";
 import { replaceMarked } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
 import {
   attachTelemetry,
   explainCommand,
+  explainExec,
+  explainSpawnEnv,
   extensionEnabled,
   getLastRecap,
   getMemoryBlock,
@@ -26,8 +26,6 @@ import {
   settingsBlock,
   shouldWriteSessionRecap,
 } from "../lib/telemetry.ts";
-
-const execFileAsync = promisify(execFile);
 
 export function orientationBlock(input: {
   memory: string;
@@ -141,10 +139,11 @@ export default function recapExtension(pi: ExtensionAPI): void {
       } else {
         const command = explainCommand(prompt, selected.model);
         try {
-          const result = await execFileAsync(command.bin, command.args, {
+          const result = await explainExec(command, {
             timeout: 120_000,
             maxBuffer: 8_000_000,
             cwd: ctx.cwd || cwd,
+            env: explainSpawnEnv(),
           });
           summary = extractAssistantText(result.stdout) || result.stdout.trim();
         } catch (err) {

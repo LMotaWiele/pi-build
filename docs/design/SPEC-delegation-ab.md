@@ -277,6 +277,57 @@ Commit, tag `ab-baseline`, confirm `./doctor.sh --offline` exits 0, and continue
 
 ---
 
+## 3.6 Validate before measuring
+
+Three sets of six have been spent discovering that a mechanism did not work. Each cost ~45 minutes and ~$3 to learn something the first arm B trial had already shown. Nothing in §4 runs until every check below passes.
+
+### 3.6.1 Offline — score the recorded sets
+
+Four databases already exist, with known correct verdicts. They are the scorer's golden fixtures and cost nothing to replay.
+
+| Database | Commit | Expected scorer output |
+|---|---|---|
+| `/tmp/pi-build-ab/telemetry.db` | `bd51f93` | 2 trials, both **void**: trial 1 on prerequisite failure (3 consecutive tool failures inside the first 3 calls), trial 2 on zero child edits. |
+| `/tmp/pi-build-ab-set/telemetry.db` | `9d81e6b` | Arm A: 2 completed, 1 real miss on no-progress. Arm B: 3 **void**, zero child edits. Set verdict **`VOID`** by rule 0. |
+| `/tmp/pi-build-ab-set2/telemetry.db` | `f8edcd2` | Trial 1 completed. Trial 2 is **not void**: the transitive join finds 6 child edits on nested turn `16157b26-…`, and the parent-wrote flag does **not** fire on `find` commands containing the fixture path. Its bound is `wall clock 645510ms`. |
+| The `78ce7cb` set | `78ce7cb` | Arm A: 3 completed. Arm B: 3 **void**, zero child edits. Set verdict **`VOID`** by rule 0. |
+
+`f8edcd2` is the discriminating case. A scorer that marks its trial 2 void has one of the two known bugs and is not ready to run a set. Both must be green before §4.
+
+Assert alongside them:
+
+- Every inference row in every database resolves to a root through the §2.3 recursive CTE. Zero orphans.
+- The parent-wrote flag is computed only from `edit`/`write` target paths. Feed it a fabricated `bash` row whose command text contains `tests/fixtures/ab/` and confirm it stays false.
+- Rule 0 fires before rules 1–6 on both `VOID` sets, and `NEITHER` is never returned for either.
+
+### 3.6.2 Offline — unit tests from §2 and §3
+
+`./doctor.sh --offline` exits 0, and these specific cases are present and green: deduped reads do not move `reads` (§2.1); the mutating-tool set matches the installed package (§2.2); a written file produces one checkpoint row while a bash-only turn produces none (§3.1); explain is skipped after an abort (§3.2); every key in `example.json` is read somewhere (§3.4).
+
+### 3.6.3 Live — one smoke trial per arm, single file
+
+Not the six-file fixture. A one-file task, which proves the mechanism in about a minute instead of eight.
+
+**Arm B smoke.** With `.pi/agents/explore.md` moved aside and `maxTurnWallClockMs` at 1800000, dispatch `implement` for one file. Assert all five:
+
+1. At least one child inference row exists, on a turn whose root is this trial.
+2. That child recorded at least one successful `edit` or `write`.
+3. The target file changed on disk, and `tsc --noEmit` still passes.
+4. The parent recorded zero `edit`/`write` calls targeting that path.
+5. Elapsed under 120s.
+
+**Arm A smoke.** Same one file, no dispatch. Assert it completes and the file changed.
+
+If the arm B smoke fails any of the five, fix and repeat the smoke. Do not start a set to find out.
+
+### 3.6.4 Trial-commit assertions
+
+In the commit the six will share: `maxTurnWallClockMs` is 1800000 for both arms (§4.4a), `.pi/agents/explore.md` is absent, the arm B prompt in §4.3 contains the string `implement subagent`, §4.0's path-integrity grep passes, and `npx tsc --noEmit && node --test` exits 0 on the unmodified fixture.
+
+Cost of all of §3.6: roughly 10–15 pi calls and under $0.30, against ~$3 and 45 minutes for one void set.
+
+---
+
 ## 4. The measurement
 
 ### 4.0 Runnability, asserted before any trial
@@ -290,6 +341,17 @@ pi subagent list
 If the only installed definition is `explore`, or no listed definition has `edit` and `write` in its tool set, **arm B is not runnable and must not be run.** A read-only child given a file and a spec section will read it, fail to edit it, and exhaust its own no-progress budget — which measures the definition's tool set, not delegation.
 
 Fix it before proceeding: add a minimal `implement` definition with `read`, `edit`, `write`, and no dispatch of its own, scoped to a single file path. Commit it. That commit becomes the `HEAD` all six trials share.
+
+**Installed is not dispatched.** At 9d81e6b and at 78ce7cb, `implement` was installed, the pre-trial check passed, and every arm B trial still dispatched `explore`, because the prompt asked for "a subagent" and the harness supplied its default. Two assertions, both mechanical:
+
+```bash
+grep -q 'implement subagent' <arm-B-prompt-file> || exit 1
+ls .pi/agents/ | grep -qv '^explore\.md$' && test ! -e .pi/agents/explore.md
+```
+
+The arm B prompt names the writing definition by name, and **no read-only definition is dispatchable for the duration of the set.** Move `.pi/agents/explore.md` aside in the trial commit and restore it afterwards. An instruction the harness can silently override is not a control; removing the wrong option is.
+
+**Subagent model selection is ignored.** Trial 4 at 78ce7cb dispatched text asking for Terra and Luna; every recorded row was Sol. Children inherit the parent's session model, which routing has set to `escalate`. This settles §4.0's model-confound check in the good direction — both arms run one model, so rules 4 and 5 stay on dollars — and it is worth an INDEX row on its own, because it means tier mix cannot be controlled from a dispatch call.
 
 **Every path `SPEC.md` names must exist.** Trial 1 (void, §4.3a) died at `consecutive tool failures 3` reading `tests/fixtures/ab/types.ts`, `parse.ts`, and `format.ts` — three guesses at a flat layout, while the sources are under `src/`. The compile gate passed throughout, because it compiles what exists rather than what the spec names.
 
@@ -353,8 +415,10 @@ Apply tests/fixtures/ab/SPEC.md in full. Do not dispatch subagents.
 **Arm B:**
 
 ```
-Apply tests/fixtures/ab/SPEC.md in full. Dispatch one subagent per file named in the spec; give each child the spec section and the file path only. Do not read those files in this session.
+Apply tests/fixtures/ab/SPEC.md in full. Dispatch the implement subagent once per file named in the spec; give each child the spec section and the full path of its one file. Do not read, edit, or write those files in this session.
 ```
+
+The definition name is load-bearing. Three void sets have now dispatched `explore` — a read-only agent — because the prompt asked for "a subagent" and the harness supplied its default. §4.0 makes the name a checked string, not a hope.
 
 ### 4.3a Trials recorded void, 2026-09-22
 
@@ -402,6 +466,8 @@ git rev-parse HEAD                      # record per trial
 ```
 
 The `git diff --quiet` line is not ceremony. Per §1.1, pi loads `settings/hosts/machina.json` from the working tree, so an uncommitted edit to the host file, the model overrides, or the cached prefix changes the harness under measurement with nothing in the trial output to reveal it. A trial that starts dirty is void, not noisy.
+
+**Abort the set after the first arm B trial if it records zero child edits.** Three sets of six have now been spent discovering setup faults that the first arm B trial exposed in full: read-only children at 9d81e6b, a single-level join at f8edcd2, read-only children again at 78ce7cb. A void set costs six trials, about 45 minutes, and roughly $3 of measurement to learn what trial 2 already showed. Check child edits before starting trial 3; if they are zero, stop, fix, and start a new set.
 
 Controls, all mandatory:
 

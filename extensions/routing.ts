@@ -30,6 +30,7 @@ import {
   DEFAULT_BOUNDS,
   extensionEnabled,
   getOpenNote,
+  explainOneShot,
   notePrompt,
   noteRunAborted,
   readPiSettings,
@@ -284,6 +285,7 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
 
     if (routingOn) {
       pi.on("before_agent_start", async (event, ctx) => {
+        if (explainOneShot()) return;
         lastCwd = ctx.cwd;
         if (!plan) plan = await resolvePlan(ctx);
         if (plan && !plan.fatal) {

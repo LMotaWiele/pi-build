@@ -3,6 +3,7 @@
  * Opening the database is lazy. A failure here must not take an extension down.
  */
 
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -709,7 +710,12 @@ function stringField(event: Record<string, unknown>, key: string): string | unde
   return typeof value === "string" ? value : undefined;
 }
 
-export function shouldWriteSessionRecap(reason: string, sawAbort: boolean): boolean {
+export function shouldWriteSessionRecap(
+  reason: string,
+  sawAbort: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (explainOneShot(env)) return false;
   return reason === "quit" || sawAbort;
 }
 
@@ -718,6 +724,68 @@ export function explainCommand(prompt: string, model?: string): { bin: string; a
   if (model) args.push("--model", model);
   args.push("--thinking", "off", "--tools", "read", "-p", prompt);
   return { bin: "pi", args };
+}
+
+/** An open stdin makes the one-shot wait forever and never call its model. */
+export const explainStdio = ["ignore", "pipe", "pipe"] as const;
+
+/** execFile never closes stdin, and it ignores a stdio override. */
+export function explainExec(
+  command: { bin: string; args: string[] },
+  options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number; maxBuffer?: number },
+): Promise<{ stdout: string; stderr: string }> {
+  const maxBuffer = options.maxBuffer ?? 8_000_000;
+  return new Promise((resolve, reject) => {
+    const child = spawn(command.bin, command.args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: [...explainStdio],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutLen = 0;
+    let stderrLen = 0;
+    let settled = false;
+    const timer = setTimeout(() => child.kill("SIGTERM"), options.timeout);
+    const finish = (err: Error | null, out = "", errText = "") => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve({ stdout: out, stderr: errText });
+    };
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutLen += chunk.length;
+      if (stdoutLen <= maxBuffer) stdout.push(chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderrLen += chunk.length;
+      if (stderrLen <= maxBuffer) stderr.push(chunk);
+    });
+    child.on("error", (err) => finish(err));
+    child.on("exit", (code, signal) => {
+      const out = Buffer.concat(stdout).toString("utf8");
+      const errText = Buffer.concat(stderr).toString("utf8");
+      if (code === 0 && !signal) finish(null, out, errText);
+      else finish(new Error(`Command failed: ${command.bin} ${command.args.join(" ")}\n${errText}`));
+    });
+  });
+}
+
+/** The explain/recap process keeps the model it was given. It is not a trial row. */
+export function explainOneShot(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PI_BUILD_EXPLAIN_ONESHOT === "1";
+}
+
+export function explainSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, PI_BUILD_EXPLAIN_ONESHOT: "1" };
+  delete env.PI_BUILD_TELEMETRY_DB;
+  delete env.PI_BUILD_PARENT_TURN;
+  delete env.PI_OFFLINE;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("PI_SUBAGENT_")) delete env[key];
+  }
+  return env;
 }
 
 export function mergeKnown(existing: string, entries: string[]): string {

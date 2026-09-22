@@ -4,16 +4,17 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { selectExplainModel, stringMap } from "../lib/models.ts";
 import { explainWriteName, unifiedDiff } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
 import {
   attachTelemetry,
   explainCommand,
+  explainExec,
+  explainOneShot,
+  explainSpawnEnv,
   extensionEnabled,
   knownEntriesFromExplanation,
   mergeKnown,
@@ -24,8 +25,6 @@ import {
   writtenFiles,
 } from "../lib/telemetry.ts";
 import { extractAssistantText } from "./recap.ts";
-
-const execFileAsync = promisify(execFile);
 
 export const EXPLAIN_CONTRACT = `Write five sections, in this order, for a competent programmer who is new to this stack:
 
@@ -42,7 +41,12 @@ export function shouldExplain(files: string[]): boolean {
 }
 
 /** An aborted turn has nothing finished to narrate. */
-export function explainAfterTurn(files: string[], aborted: boolean): boolean {
+export function explainAfterTurn(
+  files: string[],
+  aborted: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (explainOneShot(env)) return false;
   return shouldExplain(files) && !aborted;
 }
 
@@ -95,10 +99,11 @@ export default function explainExtension(pi: ExtensionAPI): void {
       const command = explainCommand(prompt, selected.model);
       let body = "";
       try {
-        const result = await execFileAsync(command.bin, command.args, {
+        const result = await explainExec(command, {
           cwd: ctx.cwd,
           timeout: 180_000,
           maxBuffer: 8_000_000,
+          env: explainSpawnEnv(),
         });
         body = extractAssistantText(result.stdout);
       } catch (err) {
