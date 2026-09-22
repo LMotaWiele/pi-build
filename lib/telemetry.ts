@@ -203,6 +203,7 @@ export function beginUserTurn(sessionId: string, prompt: string): void {
   state.filesWritten.length = 0;
   state.turnUsage = emptyUsage();
   state.turnReported = false;
+  state.sawAbort = false;
 }
 
 export function currentPrompt(): string {
@@ -285,7 +286,7 @@ export function extensionEnabled(settings: Record<string, unknown>, key: string)
   const block = settings[key];
   if (block === undefined) return true;
   if (!block || typeof block !== "object" || Array.isArray(block)) return true;
-  return (block as { enabled?: boolean }).enabled !== false;
+  return (block as Record<string, unknown>)["enabled"] !== false;
 }
 
 const SCHEMA = `

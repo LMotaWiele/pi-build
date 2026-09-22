@@ -20,6 +20,7 @@ import {
   noteWrittenFile,
   readPiSettings,
   settingsBlock,
+  sawRunAborted,
   writtenFiles,
 } from "../lib/telemetry.ts";
 import { extractAssistantText } from "./recap.ts";
@@ -40,13 +41,18 @@ export function shouldExplain(files: string[]): boolean {
   return files.length > 0;
 }
 
+/** An aborted turn has nothing finished to narrate. */
+export function explainAfterTurn(files: string[], aborted: boolean): boolean {
+  return shouldExplain(files) && !aborted;
+}
+
 export default function explainExtension(pi: ExtensionAPI): void {
   try {
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "explain")) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
     const block = settingsBlock(settings, "explain");
-    const explainRel = typeof block.explainDir === "string" ? block.explainDir : ".agent/explain";
+    const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     const diffs: string[] = [];
 
     pi.on("tool_result", (event) => {
@@ -68,15 +74,15 @@ export default function explainExtension(pi: ExtensionAPI): void {
 
     pi.on("agent_end", async (_event, ctx) => {
       const files = writtenFiles();
-      if (!shouldExplain(files)) return;
+      if (!explainAfterTurn(files, sawRunAborted())) return;
       const routing = settingsBlock(settings, "routing");
       const registry = (ctx as { modelRegistry?: { getAll: () => { provider: string; id: string; name?: string }[] } }).modelRegistry;
       const catalog = registry?.getAll().map((model) => ({ provider: model.provider, id: model.id, name: model.name })) ?? [];
       const selected = selectExplainModel({
-        tiers: stringMap(routing.tiers),
+        tiers: stringMap(routing["tiers"]),
         catalog,
         routingEnabled: extensionEnabled(settings, "routing"),
-        defaultModel: typeof settings.defaultModel === "string" ? settings.defaultModel : undefined,
+        defaultModel: typeof settings["defaultModel"] === "string" ? settings["defaultModel"] : undefined,
       });
       for (const line of selected.warnings) console.error(`[explain] ${line}`);
       if (!selected.model) return;

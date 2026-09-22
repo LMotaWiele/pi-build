@@ -390,8 +390,10 @@ export function gateNoteOpen(
   openPath: string | null,
   requestedPath: string,
   override: boolean,
+  maxOpen = 1,
 ): { allow: boolean; loggedOverride: boolean; reason?: string } {
   if (openPath === null) return { allow: true, loggedOverride: false };
+  if (maxOpen > 1) return { allow: true, loggedOverride: true };
   if (override) return { allow: true, loggedOverride: true };
   return {
     allow: false,

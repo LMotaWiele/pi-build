@@ -4,9 +4,13 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import fs from "node:fs";
+import path from "node:path";
 import { decide } from "./jev/adapter.ts";
 import { tierSelectQuestions } from "./jev/questions.ts";
-import { buildState } from "./jev/state-builder.ts";
+import { buildState, decisionSupplements } from "./jev/state-builder.ts";
+import { appendQueue } from "../lib/markdown.ts";
+import { findProjectRoot } from "../lib/scaffold.ts";
 import {
   fallbackChain,
   mismatchLine,
@@ -32,8 +36,10 @@ import {
   recordToolCall,
   selectTier,
   setActiveTier,
+  setLastRecap,
   settingsBlock,
   turnSnapshot,
+  writtenFiles,
   type TierAnswers,
 } from "../lib/telemetry.ts";
 
@@ -64,6 +70,82 @@ const ESCALATE_DEFAULTS: TierAnswers = {
   reversible: false,
 };
 
+/** "escalate" keeps the current defaults. "work" is the boolean inverse. */
+export function uncertaintyDefaults(mode: unknown): TierAnswers {
+  if (mode === "work") {
+    return {
+      single_file_edit: !ESCALATE_DEFAULTS.single_file_edit,
+      needs_repo_reasoning: !ESCALATE_DEFAULTS.needs_repo_reasoning,
+      unfamiliar_stack: !ESCALATE_DEFAULTS.unfamiliar_stack,
+      spec_exists: !ESCALATE_DEFAULTS.spec_exists,
+      reversible: !ESCALATE_DEFAULTS.reversible,
+    };
+  }
+  return { ...ESCALATE_DEFAULTS };
+}
+
+export function formatTierSection(tiers: Partial<Record<string, { modelId: string }>>): string {
+  const lines = ["This session sets its model with setModel. Resolved tiers:"];
+  for (const [name, tier] of Object.entries(tiers)) {
+    if (!tier) continue;
+    lines.push(`- ${name}: ${tier.modelId}`);
+  }
+  return lines.join("\n");
+}
+
+export function firstUnwrittenPath(noteText: string | null, written: string[]): string {
+  if (!noteText) return "(unknown)";
+  const found = noteText.match(/(?:[\w.+-]+\/)*[\w.+-]+\.[A-Za-z0-9]+/g) ?? [];
+  for (const candidate of found) {
+    const hit = written.some((file) => file === candidate || file.endsWith(`/${candidate}`) || candidate.endsWith(`/${file}`));
+    if (!hit) return candidate;
+  }
+  return "(unknown)";
+}
+
+export function boundCheckpointLine(reason: string, written: string[], resumeFrom: string): string {
+  return `bounded at ${reason}; wrote ${written.join(", ")}; resume from ${resumeFrom}`;
+}
+
+export async function runBoundAbort(input: {
+  edits: number;
+  reason: string;
+  written: string[];
+  resumeFrom: string;
+  queueAppend: (item: string, source: string) => void | Promise<void>;
+  setRecap: (line: string) => void;
+  abort: () => void;
+}): Promise<void> {
+  try {
+    await checkpointOnBound(input);
+  } catch (err) {
+    console.error("[bounds] checkpoint failed", err);
+  }
+  input.abort();
+}
+
+export async function checkpointOnBound(input: {
+  edits: number;
+  reason: string;
+  written: string[];
+  resumeFrom: string;
+  queueAppend: (item: string, source: string) => void | Promise<void>;
+  setRecap: (line: string) => void;
+}): Promise<void> {
+  if (input.edits <= 0) return;
+  const line = boundCheckpointLine(input.reason, input.written, input.resumeFrom);
+  try {
+    await input.queueAppend(line, "SPEC-delegation-ab §3.1");
+  } catch (err) {
+    console.error("[bounds] queue_append failed", err);
+  }
+  try {
+    input.setRecap(line);
+  } catch (err) {
+    console.error("[bounds] setLastRecap failed", err);
+  }
+}
+
 function asBool(value: unknown): boolean {
   return value === true;
 }
@@ -75,24 +157,27 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
     const boundsOn = extensionEnabled(settings, "bounds");
     const routingBlock = settingsBlock(settings, "routing");
     const boundsBlock = settingsBlock(settings, "bounds");
-    const tiers = stringMap(routingBlock.tiers);
+    const tiers = stringMap(routingBlock["tiers"]);
     if (!routingOn && !boundsOn && Object.keys(tiers).length === 0) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
     const bounds: BoundConfig = {
-      maxLoopDepth: numberOr(boundsBlock.maxLoopDepth, DEFAULT_BOUNDS.maxLoopDepth),
-      maxTurnWallClockMs: numberOr(boundsBlock.maxTurnWallClockMs, DEFAULT_BOUNDS.maxTurnWallClockMs),
-      maxConsecutiveToolFailures: numberOr(boundsBlock.maxConsecutiveToolFailures, DEFAULT_BOUNDS.maxConsecutiveToolFailures),
-      noProgressReads: numberOr(boundsBlock.noProgressReads, DEFAULT_BOUNDS.noProgressReads),
+      maxLoopDepth: numberOr(boundsBlock["maxLoopDepth"], DEFAULT_BOUNDS.maxLoopDepth),
+      maxTurnWallClockMs: numberOr(boundsBlock["maxTurnWallClockMs"], DEFAULT_BOUNDS.maxTurnWallClockMs),
+      maxConsecutiveToolFailures: numberOr(boundsBlock["maxConsecutiveToolFailures"], DEFAULT_BOUNDS.maxConsecutiveToolFailures),
+      noProgressReads: numberOr(boundsBlock["noProgressReads"], DEFAULT_BOUNDS.noProgressReads),
     };
+    const stateBudget = numberOr(routingBlock["stateBudgetTokens"], 4000);
+    const uncertain = uncertaintyDefaults(routingBlock["defaultOnUncertain"]);
     let decidedPrompt = "";
     let boundFired = false;
     let plan: RoutingPlan | null = null;
-    const thinkingLevels = (settings.modelThinkingLevels ?? {}) as Record<string, unknown>;
-    const keyEnv = typeof routingBlock.decisionApiKeyEnv === "string" && routingBlock.decisionApiKeyEnv
-      ? routingBlock.decisionApiKeyEnv
+    let lastCwd = process.cwd();
+    const thinkingLevels = (settings["modelThinkingLevels"] ?? {}) as Record<string, unknown>;
+    const keyEnv = typeof routingBlock["decisionApiKeyEnv"] === "string" && routingBlock["decisionApiKeyEnv"]
+      ? routingBlock["decisionApiKeyEnv"]
       : "OPENROUTER_API_KEY";
-    const jevUrl = typeof routingBlock.decisionEndpoint === "string" ? routingBlock.decisionEndpoint : undefined;
-    const jevModel = typeof routingBlock.decisionModel === "string" ? routingBlock.decisionModel : undefined;
+    const jevUrl = typeof routingBlock["decisionEndpoint"] === "string" ? routingBlock["decisionEndpoint"] : undefined;
+    const jevModel = typeof routingBlock["decisionModel"] === "string" ? routingBlock["decisionModel"] : undefined;
 
     const resolvePlan = async (ctx: { modelRegistry: { getAll: () => { provider: string; id: string; name?: string }[]; refresh?: () => Promise<unknown> }; shutdown: () => void }): Promise<RoutingPlan> => {
       try {
@@ -105,7 +190,7 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
         tiers,
         catalog,
         routingEnabled: routingOn,
-        defaultModel: typeof settings.defaultModel === "string" ? settings.defaultModel : undefined,
+        defaultModel: typeof settings["defaultModel"] === "string" ? settings["defaultModel"] : undefined,
       });
       if (next.fatal) halt(ctx, next.refusals);
       for (const line of next.warnings) console.error(line);
@@ -132,7 +217,16 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
       halt(ctx, lines);
     };
 
+    const appendLiveQueue = (item: string, source: string) => {
+      const memory = settingsBlock(readPiSettings(), "memoryGate");
+      const indexRel = typeof memory["indexPath"] === "string" ? memory["indexPath"] : ".agent/notes/INDEX.md";
+      const file = path.resolve(findProjectRoot(lastCwd), indexRel);
+      const today = new Date().toISOString().slice(0, 10);
+      fs.writeFileSync(file, appendQueue(fs.readFileSync(file, "utf8"), item, source, today));
+    };
+
     pi.on("session_start", async (_event, ctx) => {
+      lastCwd = ctx.cwd;
       plan = await resolvePlan(ctx);
       if (!routingOn || !plan || plan.fatal) return;
       const seen = new Set<string>();
@@ -170,16 +264,40 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
       });
       pi.appendEntry("pi-build-bound", { reason, turnId: snap.turnId });
       console.error(`[bounds] ${reason}`);
-      ctx.abort();
+      const written = writtenFiles();
+      const note = getOpenNote();
+      let noteText: string | null = null;
+      if (note?.path) {
+        try {
+          noteText = fs.readFileSync(note.path, "utf8");
+        } catch {
+          noteText = null;
+        }
+      }
+      void runBoundAbort({
+        edits: snap.edits,
+        reason,
+        written,
+        resumeFrom: firstUnwrittenPath(noteText, written),
+        queueAppend: appendLiveQueue,
+        setRecap: setLastRecap,
+        abort: () => ctx.abort(),
+      });
     };
 
     if (routingOn) {
       pi.on("before_agent_start", async (event, ctx) => {
+        lastCwd = ctx.cwd;
+        if (!plan) plan = await resolvePlan(ctx);
+        if (plan && !plan.fatal) {
+          event.systemPromptOptions.sections.pi_build_tiers = formatTierSection(plan.tiers);
+        }
         notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
         if (event.prompt === decidedPrompt) return;
         decidedPrompt = event.prompt;
         boundFired = false;
         const note = getOpenNote();
+        const extra = decisionSupplements(findProjectRoot(ctx.cwd));
         const state = buildState({
           userPrompt: event.prompt,
           loopIndex: 0,
@@ -187,14 +305,14 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
           tier: activeTierName(),
           tools: [],
           filesWritten: [],
-          filesRead: [],
-          indexRow: note?.topic,
+          filesRead: extra.filesRead,
+          indexRow: extra.indexRow,
           currentClaim: note?.currentClaim,
-          lastToolResult: "",
-        });
+          lastToolResult: extra.lastToolResult,
+        }, stateBudget);
         const apiKey = process.env[keyEnv] || process.env.OPENROUTER_API_KEY || "";
         const answers = await decide(state, tierSelectQuestions(), {
-          defaults: ESCALATE_DEFAULTS,
+          defaults: uncertain,
           url: jevUrl,
           model: jevModel,
           apiKey,

@@ -78,10 +78,13 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
     if (!extensionEnabled(settings, "memoryGate")) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
     const block = settingsBlock(settings, "memoryGate");
-    const blockReads = block.blockRawNotesReads === true;
-    const autoScaffold = block.autoScaffold !== false;
-    const indexRel = typeof block.indexPath === "string" ? block.indexPath : ".agent/notes/INDEX.md";
-    const explainRel = typeof block.explainDir === "string" ? block.explainDir : ".agent/explain";
+    const blockReads = block["blockRawNotesReads"] === true;
+    const autoScaffold = block["autoScaffold"] !== false;
+    const injectIndex = block["injectIndexOnSessionStart"] !== false;
+    const notesPerTask = typeof block["notesPerTask"] === "number" && block["notesPerTask"] > 0 ? block["notesPerTask"] : 1;
+    const indexRel = typeof block["indexPath"] === "string" ? block["indexPath"] : ".agent/notes/INDEX.md";
+    const notesRel = typeof block["notesDir"] === "string" ? block["notesDir"] : ".agent/notes";
+    const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     const templatesDir = templatesDirFromSettings(process.env.PI_BUILD_SETTINGS);
     let parsed: ParsedIndex | null = null;
     let parseFailed = false;
@@ -133,7 +136,7 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
       notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
       const root = findProjectRoot(ctx.cwd);
       const marked = loadIndex(root);
-      if (marked) event.systemPromptOptions.sections.pi_build_memory = marked;
+      if (marked && injectIndex) event.systemPromptOptions.sections.pi_build_memory = marked;
       event.systemPromptOptions.sections.pi_build_tools = TOOL_INJECTION;
     });
 
@@ -155,7 +158,7 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
         if (decision.message) console.error(`[memory-gate] ${decision.message}`);
         return;
       }
-      const topic = parsed?.notes.find((row) => path.resolve(root, ".agent/notes", row.file) === resolved)?.topic;
+      const topic = parsed?.notes.find((row) => path.resolve(root, notesRel, row.file) === resolved)?.topic;
       const reason = decision.message ?? "";
       const withTopic = topic && !reason.includes(topic) ? `${reason} Topic: ${topic}.` : reason;
       annotateCall(event.toolCallId, { outcome: "blocked", blockedBy: "memory-gate", path: resolved, resultBytes: withTopic.length });
@@ -215,8 +218,8 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
             isError: true,
           };
         }
-        const notePath = path.resolve(cwd, ".agent/notes", resolved.match.file);
-        const gate = gateNoteOpen(getOpenNote()?.path ?? null, notePath, params.override === true);
+        const notePath = path.resolve(cwd, notesRel, resolved.match.file);
+        const gate = gateNoteOpen(getOpenNote()?.path ?? null, notePath, params.override === true, notesPerTask);
         if (!gate.allow) {
           return { content: [{ type: "text", text: gate.reason ?? "rejected" }], isError: true };
         }

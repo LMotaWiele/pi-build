@@ -32,6 +32,7 @@ export interface ReadGuardDecision {
 
 export class ReadGuard {
   enabled = true;
+  allowRangeReads = true;
   private call = 0;
   private serial = 0;
   private files = new Map<string, FileMemory>();
@@ -57,7 +58,7 @@ export class ReadGuard {
     this.call += 1;
     if (!this.enabled) return { action: "pass", call: this.call };
     if (input.force === true) return { action: "force", call: this.call };
-    if (input.offset != null || input.limit != null) return { action: "range", call: this.call };
+    if (this.allowRangeReads && (input.offset != null || input.limit != null)) return { action: "range", call: this.call };
     const epoch = contextEpoch();
     const prev = this.files.get(input.path);
     if (!prev || prev.epoch !== epoch) return { action: "pass", call: this.call };
@@ -112,7 +113,9 @@ export default function readGuardExtension(pi: ExtensionAPI): void {
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
     const block = settingsBlock(settings, "readGuard");
     const guard = new ReadGuard();
-    guard.enabled = block.enabled !== false && block.dedupeWithinTurn !== false;
+    guard.enabled = block["enabled"] !== false && block["dedupeWithinTurn"] !== false;
+    guard.allowRangeReads = block["allowRangeReads"] !== false;
+    const diffOnWrite = block["diffOnRepeatAfterWrite"] !== false;
     const pending = new Map<string, ReadGuardDecision>();
 
     pi.on("before_agent_start", (event, ctx) => {
@@ -165,6 +168,10 @@ export default function readGuardExtension(pi: ExtensionAPI): void {
       }
       if (decision.action === "range" || decision.action === "force" || decision.action === "pass") {
         if (decision.action === "pass" || decision.action === "force") guard.recordRead(filePath, text);
+        return;
+      }
+      if (decision.action === "diff" && !diffOnWrite) {
+        guard.recordRead(filePath, text);
         return;
       }
       const previous = guard.stored(filePath) ?? "";

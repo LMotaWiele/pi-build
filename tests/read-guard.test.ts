@@ -66,6 +66,10 @@ test("range reads are never suppressed and a disabled guard passes everything", 
   guard.onNewPrompt();
   guard.enabled = true;
   assert.equal(guard.decide({ path: "a.ts" }).action, "pass");
+  guard.allowRangeReads = false;
+  guard.decide({ path: "a.ts" });
+  guard.recordRead("a.ts", "body\n");
+  assert.equal(guard.decide({ path: "a.ts", offset: 10 }).action, "pointer");
 });
 
 test("a deduped read does not move reads; a passed read does", () => {

@@ -18,7 +18,7 @@ import {
 } from "../lib/markdown.ts";
 import { estimateTokens, explainCommand, mergeKnown, selectTier, shouldWriteSessionRecap } from "../lib/telemetry.ts";
 import { orientationBlock, extractAssistantText } from "../extensions/recap.ts";
-import { shouldExplain } from "../extensions/explain.ts";
+import { explainAfterTurn, shouldExplain } from "../extensions/explain.ts";
 import { knownEntriesFromExplanation } from "../lib/telemetry.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -109,6 +109,8 @@ test("note_open twice is rejected; override is allowed", () => {
   assert.equal(second.allow, false);
   assert.match(second.reason ?? "", /\/n\/a.md/);
   const forced = gateNoteOpen("/n/a.md", "/n/b.md", true);
+  const wider = gateNoteOpen("/n/a.md", "/n/b.md", false, 2);
+  assert.equal(wider.allow, true);
   assert.equal(forced.allow, true);
   assert.equal(forced.loggedOverride, true);
 });
@@ -170,6 +172,9 @@ test("session recap predicate, explain gate, known.md, tier map", () => {
   assert.equal(shouldWriteSessionRecap("reload", false), false);
   assert.equal(shouldExplain([]), false);
   assert.equal(shouldExplain(["a.ts"]), true);
+  assert.equal(explainAfterTurn(["a.ts"], true), false);
+  assert.equal(explainAfterTurn(["a.ts"], false), true);
+  assert.equal(explainAfterTurn([], false), false);
   const args = explainCommand("hello").args;
   assert.equal(args[args.indexOf("--thinking") + 1], "off");
   assert.equal(args[args.indexOf("--tools") + 1], "read");

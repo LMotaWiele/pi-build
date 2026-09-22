@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildState, type TurnContext } from "../extensions/jev/state-builder.ts";
+import { buildState, decisionSupplements, type TurnContext } from "../extensions/jev/state-builder.ts";
 import { criteriaEvalQuestions, indexResolveQuestions } from "../extensions/jev/questions.ts";
 import { normalizeErrorBody } from "../extensions/jev/adapter.ts";
 import { estimateTokens } from "../lib/telemetry.ts";
@@ -42,6 +42,14 @@ test("fixture projections match and stay inside the budget", () => {
     assert.equal(text, expected, name);
     assertProjection(text, ctx);
   }
+});
+
+test("decision supplements use the queue, git status, and known.md", () => {
+  const extra = decisionSupplements(root);
+  assert.equal(typeof extra.indexRow, "string");
+  assert.ok((extra.indexRow ?? "").length > 0);
+  assert.ok(extra.filesRead.length <= 40);
+  assert.equal(typeof extra.lastToolResult, "string");
 });
 
 test("over-budget state drops files_read first and keeps the prompt header", () => {

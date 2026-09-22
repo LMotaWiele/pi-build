@@ -46,6 +46,9 @@ for f in "${json_files[@]}"; do
 done
 ok "json"
 
+node --experimental-strip-types "$REPO/lib/settings-keys.ts" || fail "unread settings key"
+ok "settings keys"
+
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     ""|\#*) continue ;;

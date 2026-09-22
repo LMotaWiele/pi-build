@@ -3,7 +3,11 @@
  * Drop fields from the bottom when the 4k budget is exceeded, and always log the token count.
  */
 
-import { estimateTokens } from "../../lib/telemetry.ts";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { parseIndex } from "../../lib/markdown.ts";
+import { estimateTokens, readPiSettings, settingsBlock } from "../../lib/telemetry.ts";
 
 export interface ToolTrace {
   name: string;
@@ -53,6 +57,35 @@ function section(id: string, ctx: TurnContext): string | null {
     return `files_read:\n${lines.length ? lines.join("\n") : "- (none)"}`;
   }
   return null;
+}
+
+/** Decision-time facts that beginUserTurn has already cleared off the open note. */
+export function decisionSupplements(root: string): { indexRow?: string; filesRead: string[]; lastToolResult: string } {
+  let indexRow: string | undefined;
+  try {
+    const block = settingsBlock(readPiSettings(), "memoryGate");
+    const indexRel = typeof block["indexPath"] === "string" ? block["indexPath"] : ".agent/notes/INDEX.md";
+    const parsed = parseIndex(fs.readFileSync(path.resolve(root, indexRel), "utf8"));
+    const top = parsed.activeNext[0];
+    if (top?.item) indexRow = top.item;
+  } catch {
+    indexRow = undefined;
+  }
+  let filesRead: string[] = [];
+  try {
+    const out = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" });
+    filesRead = out.split("\n").filter((line) => line.length > 0).slice(0, 40);
+  } catch {
+    filesRead = [];
+  }
+  let lastToolResult = "";
+  try {
+    const known = path.join(root, ".agent/explain/known.md");
+    if (fs.existsSync(known)) lastToolResult = fs.readFileSync(known, "utf8");
+  } catch {
+    lastToolResult = "";
+  }
+  return { indexRow, filesRead, lastToolResult };
 }
 
 export function buildState(ctx: TurnContext, budgetTokens = 4000): string {

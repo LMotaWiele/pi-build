@@ -79,7 +79,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
     if (!extensionEnabled(settings, "recap")) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
     const block = settingsBlock(settings, "recap");
-    const explainRel = typeof block.explainDir === "string" ? block.explainDir : ".agent/explain";
+    const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     let cwd = process.cwd();
 
     pi.on("session_start", (_event, ctx) => {
@@ -125,7 +125,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
       const registry = (ctx as { modelRegistry?: { getAll: () => { provider: string; id: string; name?: string }[] } }).modelRegistry;
       const catalog = registry?.getAll().map((model) => ({ provider: model.provider, id: model.id, name: model.name })) ?? [];
       const selected = selectExplainModel({
-        tiers: stringMap(routing.tiers),
+        tiers: stringMap(routing["tiers"]),
         catalog,
         routingEnabled: extensionEnabled(readPiSettings(), "routing"),
       });
