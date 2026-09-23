@@ -1,6 +1,6 @@
 # SPEC — drift diagnosis, audit fixes, monolithic vs delegated measurement, conditional completion
 
-**Place this file at the repository root of `pi-build`. Do not create a new top-level directory for it.**
+**Place at:** `docs/design/SPEC-delegation-ab.md`
 
 **Status:** open
 **Applies to:** `pi-build` @ `@earendil-works/pi-coding-agent` 0.87.0

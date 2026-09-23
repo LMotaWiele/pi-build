@@ -4,9 +4,10 @@ Documents for this project live in this repository.
 
 | What | Where |
 |---|---|
-| Specs | `docs/design/` |
-| Measurement spec, also at the repo root | `SPEC-delegation-ab.md` is the same text as `docs/design/SPEC-delegation-ab.md`. §4–§6 are withdrawn. |
-| Context spec, at the repo root | `SPEC-context-500k.md` supersedes that measurement. The same text is `docs/design/SPEC-context-500k.md`. |
+| Specs | `docs/design/`, plus the live harness spec at `docs/SPEC-harness-setup.md` |
+| Harness setup spec | `docs/SPEC-harness-setup.md`. Supersedes the context spec. |
+| Measurement spec | `docs/design/SPEC-delegation-ab.md`. §1–§3 are committed. §4–§6 are withdrawn. |
+| Context spec | `docs/design/SPEC-context-500k.md`. Superseded by the harness setup spec. Kept for history. Not executed. |
 | Trial writeup | `.agent/explain/` |
 | Notes and the queue | `.agent/notes/INDEX.md` |
 

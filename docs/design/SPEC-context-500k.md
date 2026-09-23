@@ -1,8 +1,8 @@
 # SPEC — context management for 500k-token specs
 
-**Place at the repository root of `pi-build`. Supersedes `SPEC-delegation-ab.md` §4–§6.**
+**Place at:** `docs/design/SPEC-context-500k.md`. Supersedes `SPEC-delegation-ab.md` §4–§6.
 
-**Status:** open
+**Status:** superseded 2026-09-23 by `docs/SPEC-harness-setup.md`. Kept for history. Not executed.
 **Executor:** Grok Build
 **Written:** 2026-09-22
 

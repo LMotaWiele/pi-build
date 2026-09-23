@@ -50,7 +50,7 @@ link_into_agent "$REPO/settings/web-search.json" ~/.pi/agent/web-search.json
 link_into_agent "$REPO/extensions" ~/.pi/agent/extensions
 link_into_agent "$REPO/skills" ~/.pi/agent/skills
 link_into_agent "$REPO/lib" ~/.pi/agent/lib
-link_into_agent "$REPO/SPEC-delegation-ab.md" ~/.pi/agent/SPEC-delegation-ab.md
+link_into_agent "$REPO/docs/design/SPEC-delegation-ab.md" ~/.pi/agent/SPEC-delegation-ab.md
 
 if [ ! -f ~/.config/pi/env ]; then
   mkdir -p ~/.config/pi
