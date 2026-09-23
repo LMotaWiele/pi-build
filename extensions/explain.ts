@@ -54,7 +54,7 @@ export default function explainExtension(pi: ExtensionAPI): void {
   try {
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "explain")) return;
-    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "explain");
     const block = settingsBlock(settings, "explain");
     const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     const diffs: string[] = [];

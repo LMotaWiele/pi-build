@@ -23,6 +23,7 @@ import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.ts";
+import { attachTelemetry } from "../../lib/telemetry.ts";
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
@@ -51,6 +52,7 @@ function getTextContent(message: AssistantMessage): string {
 }
 
 export default function planModeExtension(pi: ExtensionAPI): void {
+	attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "plan-mode");
 	let planModeEnabled = false;
 	let executionMode = false;
 	let todoItems: TodoItem[] = [];

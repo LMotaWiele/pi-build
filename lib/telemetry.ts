@@ -49,6 +49,8 @@ interface TelemetryBag {
   /** First resolution wins. A later subagent dispatch rewrites the env for children and must not retarget this process. */
   parentTurnResolved: boolean;
   resolvedParentTurnId: string | null;
+  hookSeq: number;
+  lastDeclaredHook: string;
 }
 
 function emptyUsage(): TurnUsage {
@@ -92,6 +94,8 @@ function freshBag(): TelemetryBag {
     messageStarted: new Map(),
     parentTurnResolved: false,
     resolvedParentTurnId: null,
+    hookSeq: 0,
+    lastDeclaredHook: "",
   };
 }
 
@@ -353,6 +357,20 @@ CREATE TABLE IF NOT EXISTS ab_trials (
   tier TEXT,
   void_reason TEXT
 );
+
+CREATE TABLE IF NOT EXISTS hook_touches (
+  id INTEGER PRIMARY KEY,
+  ts INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  event TEXT NOT NULL,
+  extension TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  key_or_tool TEXT,
+  bytes_before INTEGER,
+  bytes_after INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_hook_turn ON hook_touches(session_id, turn_id, seq);
 `;
 
 export interface ToolCallRow {
@@ -591,11 +609,214 @@ export function activeTierName(): string {
   return bag().activeTier;
 }
 
+const HOOK_WRAP = Symbol.for("pi-build.hook-wrap");
+
+/** Streaming deltas are not context rewrites. Leave them off the trace. */
+const TRACED_EVENTS = new Set([
+  "before_agent_start",
+  "context",
+  "context_with_system",
+  "tool_result",
+  "tool_call",
+  "session_compact",
+  "session_before_compact",
+  "session_start",
+  "session_shutdown",
+  "agent_end",
+  "agent_start",
+  "turn_end",
+  "turn_start",
+  "message_end",
+  "message_start",
+  "input",
+  "before_provider_request",
+  "tool_execution_start",
+]);
+
+function byteSize(value: unknown): number {
+  if (typeof value === "string") return value.length;
+  if (value == null) return 0;
+  try {
+    return JSON.stringify(value)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function sectionSizes(event: Record<string, unknown>): Map<string, number> {
+  const options = event.systemPromptOptions;
+  const sections =
+    options && typeof options === "object"
+      ? (options as { sections?: Record<string, unknown> }).sections
+      : undefined;
+  const sizes = new Map<string, number>();
+  if (!sections || typeof sections !== "object") return sizes;
+  for (const [key, value] of Object.entries(sections)) sizes.set(key, byteSize(value));
+  return sizes;
+}
+
+function changedSectionKeys(before: Map<string, number>, after: Map<string, number>): string {
+  const keys = new Set([...before.keys(), ...after.keys()]);
+  const changed: string[] = [];
+  for (const key of keys) {
+    if ((before.get(key) ?? -1) !== (after.get(key) ?? -1)) changed.push(key);
+  }
+  changed.sort();
+  return changed.join(",");
+}
+
+interface HookMeasure {
+  key: string;
+  bytes: number;
+  sections?: Map<string, number>;
+}
+
+function measureHook(eventName: string, event: Record<string, unknown>): HookMeasure {
+  if (eventName === "before_agent_start") {
+    const sections = sectionSizes(event);
+    const bytes = [...sections.values()].reduce((sum, value) => sum + value, 0);
+    const key = [...sections.keys()].sort().join(",") || "(none)";
+    return { key, bytes, sections };
+  }
+  if (eventName === "tool_call" || eventName === "tool_result" || eventName === "tool_execution_start") {
+    const key = typeof event.toolName === "string" ? event.toolName : "(tool)";
+    const payload = eventName === "tool_call" ? event.input : eventName === "tool_result" ? event.content : event.args;
+    return { key, bytes: byteSize(payload) };
+  }
+  if (eventName === "context" || eventName === "context_with_system") {
+    return { key: "messages", bytes: byteSize(event.messages) };
+  }
+  if (eventName === "message_end" || eventName === "message_start") {
+    const message = event.message as { content?: unknown } | undefined;
+    return { key: "message", bytes: byteSize(message?.content ?? "") };
+  }
+  return { key: eventName, bytes: byteSize(event.type ?? eventName) };
+}
+
+/** Our extensions set this around their handlers. Anything else is a third-party touch. */
+export function declareHookExtension(name: string): void {
+  bag().lastDeclaredHook = name;
+}
+
+export function recordHookTouch(row: {
+  event: string;
+  extension: string;
+  seq: number;
+  key: string;
+  bytesBefore: number;
+  bytesAfter: number;
+}): void {
+  const snap = turnSnapshot();
+  const store = database();
+  if (!store) return;
+  try {
+    store
+      .prepare(
+        `INSERT INTO hook_touches
+          (ts, session_id, turn_id, event, extension, seq, key_or_tool, bytes_before, bytes_after)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(Date.now(), snap.sessionId, snap.turnId, row.event, row.extension, row.seq, row.key, row.bytesBefore, row.bytesAfter);
+  } catch (err) {
+    console.error("[telemetry] hook_touches insert failed", err);
+  }
+}
+
+type HookHandler = (event: Record<string, unknown>, ctx: Record<string, unknown>) => unknown;
+
+/** One row for this handler. A handler that did not declare a name is `unknown:<seq>`. */
+export async function runTracedHook(
+  eventName: string,
+  handler: HookHandler,
+  event: Record<string, unknown>,
+  ctx: Record<string, unknown> = {},
+): Promise<unknown> {
+  const state = bag();
+  state.lastDeclaredHook = "";
+  const before = measureHook(eventName, event);
+  const seq = state.hookSeq + 1;
+  state.hookSeq = seq;
+  let result: unknown;
+  let thrown: unknown;
+  try {
+    result = await handler(event, ctx);
+  } catch (err) {
+    thrown = err;
+  }
+  const after = measureHook(eventName, event);
+  let key = after.key || before.key;
+  if (eventName === "before_agent_start" && before.sections && after.sections) {
+    key = changedSectionKeys(before.sections, after.sections) || before.key;
+  }
+  const extension = state.lastDeclaredHook || `unknown:${seq}`;
+  state.lastDeclaredHook = "";
+  recordHookTouch({ event: eventName, extension, seq, key, bytesBefore: before.bytes, bytesAfter: after.bytes });
+  if (thrown) throw thrown;
+  return result;
+}
+
+const HOOK_PATCH = Symbol.for("pi-build.hook-patch");
+
+function hookPatch(): { patched: boolean; traced: WeakMap<HookHandler, HookHandler> } {
+  const g = globalThis as typeof globalThis & {
+    [HOOK_PATCH]?: { patched: boolean; traced: WeakMap<HookHandler, HookHandler> };
+  };
+  if (!g[HOOK_PATCH]) g[HOOK_PATCH] = { patched: false, traced: new WeakMap() };
+  return g[HOOK_PATCH];
+}
+
+function traceHandler(handler: HookHandler, eventName: string): HookHandler {
+  const traced = hookPatch().traced;
+  const existing = traced.get(handler);
+  if (existing) return existing;
+  const wrapped: HookHandler = (event, ctx) => runTracedHook(eventName, handler, event, ctx);
+  traced.set(handler, wrapped);
+  return wrapped;
+}
+
+/**
+ * The runner reads each extension's handler list through Map.get inside
+ * snapshotEventHandlers. Wrapping that read names every touch. Our extensions
+ * declare a name; the rest are unknown:<seq>.
+ * jiti loads this file once per extension, so the patch flag lives on the process global.
+ */
+function installHookMapPatch(): void {
+  const patch = hookPatch();
+  if (patch.patched) return;
+  patch.patched = true;
+  const original = Map.prototype.get;
+  Map.prototype.get = function (key: unknown) {
+    const value = original.call(this, key);
+    if (typeof key !== "string" || !TRACED_EVENTS.has(key) || !Array.isArray(value) || value.length === 0) return value;
+    if (!value.every((item) => typeof item === "function")) return value;
+    const stack = new Error().stack ?? "";
+    if (!stack.includes("snapshotEventHandlers")) return value;
+    return value.map((handler) => traceHandler(handler as HookHandler, key));
+  };
+}
+
+function wrapExtensionOn(pi: TelemetryHost, extensionName: string): void {
+  const host = pi as TelemetryHost & { [HOOK_WRAP]?: boolean; on: TelemetryHost["on"] };
+  if (host[HOOK_WRAP]) return;
+  host[HOOK_WRAP] = true;
+  const original = host.on.bind(host);
+  host.on = (event, handler) => {
+    const named: HookHandler = (eventObj, ctx) => {
+      declareHookExtension(extensionName);
+      return handler(eventObj, ctx);
+    };
+    return original(event, named);
+  };
+}
+
 /**
  * One process-wide listener. Later calls are no-ops so every extension can try to attach.
  * The flag is on the process global because each extension loads its own copy of this file.
+ * Each caller still names its own handlers. Third-party handlers stay unknown:<seq>.
  */
-export function attachTelemetry(pi: TelemetryHost): void {
+export function attachTelemetry(pi: TelemetryHost, extensionName = "unnamed"): void {
+  wrapExtensionOn(pi, extensionName);
+  installHookMapPatch();
   const state = bag();
   if (state.attached) return;
   state.attached = true;

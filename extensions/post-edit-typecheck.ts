@@ -10,11 +10,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { extensionEnabled, readPiSettings } from "../lib/telemetry.ts";
+import { attachTelemetry, extensionEnabled, readPiSettings } from "../lib/telemetry.ts";
 
 export default function postEditTypecheck(pi: ExtensionAPI): void {
   try {
     if (!extensionEnabled(readPiSettings(), "postEditTypecheck")) return;
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "post-edit-typecheck");
     const EDIT_TOOLS = new Set(["edit", "write"]);
     let pendingCheck = false;
     let lastCheckTime = 0;

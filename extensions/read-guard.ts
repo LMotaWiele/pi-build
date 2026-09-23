@@ -110,7 +110,7 @@ export default function readGuardExtension(pi: ExtensionAPI): void {
   try {
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "readGuard")) return;
-    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "read-guard");
     const block = settingsBlock(settings, "readGuard");
     const guard = new ReadGuard();
     guard.enabled = block["enabled"] !== false && block["dedupeWithinTurn"] !== false;

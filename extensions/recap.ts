@@ -75,7 +75,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
   try {
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "recap")) return;
-    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "recap");
     const block = settingsBlock(settings, "recap");
     const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     let cwd = process.cwd();

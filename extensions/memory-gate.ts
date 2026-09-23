@@ -76,8 +76,9 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
   try {
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "memoryGate")) return;
-    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "memory-gate");
     const block = settingsBlock(settings, "memoryGate");
+    const recapOwnsMemory = extensionEnabled(settings, "recap");
     const blockReads = block["blockRawNotesReads"] === true;
     const autoScaffold = block["autoScaffold"] !== false;
     const injectIndex = block["injectIndexOnSessionStart"] !== false;
@@ -136,7 +137,7 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
       notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
       const root = findProjectRoot(ctx.cwd);
       const marked = loadIndex(root);
-      if (marked && injectIndex) event.systemPromptOptions.sections.pi_build_memory = marked;
+      if (marked && injectIndex && !recapOwnsMemory) event.systemPromptOptions.sections.pi_build_memory = marked;
       event.systemPromptOptions.sections.pi_build_tools = TOOL_INJECTION;
     });
 
