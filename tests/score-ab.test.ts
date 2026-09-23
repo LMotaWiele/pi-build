@@ -38,7 +38,16 @@ test("rule 0 matches before a void arm can look like NEITHER", () => {
   assert.equal(setVerdict(neither), "NEITHER");
 });
 
-test("recorded sets score to the §3.6.1 verdicts", () => {
+test("recorded sets score to the §3.6.1 verdicts", {
+  skip: [
+    "/tmp/pi-build-ab/telemetry.db",
+    "/tmp/pi-build-ab-set/telemetry.db",
+    "/tmp/pi-build-ab-set2/telemetry.db",
+    "/tmp/pi-build-ab-set3/telemetry.db",
+  ].every((file) => fs.existsSync(file))
+    ? false
+    : "local measurement databases are not on this machine",
+}, () => {
   const files = [
     "/tmp/pi-build-ab/telemetry.db",
     "/tmp/pi-build-ab-set/telemetry.db",

@@ -148,12 +148,18 @@ test("resolveTopic does not guess when ambiguous and does not search past the in
 });
 
 test("queue append numbers the next row", () => {
+  const before = parseIndex(templateIndex);
+  const max = before.activeNext.reduce((acc, row) => {
+    const n = Number.parseInt(row.n, 10);
+    return Number.isFinite(n) ? Math.max(acc, n) : acc;
+  }, 0);
   const next = appendQueue(templateIndex, "check prices", "human", "2026-09-21");
   const parsed = parseIndex(next);
   const last = parsed.activeNext[parsed.activeNext.length - 1];
   assert.equal(last.item, "check prices");
   assert.equal(last.source, "human");
-  assert.equal(last.n, String(parsed.activeNext.length));
+  assert.equal(last.n, String(max + 1));
+  assert.equal(parsed.activeNext.length, before.activeNext.length + 1);
 });
 
 test("marked memory block is injected once across two compactions", () => {
