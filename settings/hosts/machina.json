@@ -73,7 +73,9 @@
     "maxLoopDepth": 60,
     "maxTurnWallClockMs": 1800000,
     "maxConsecutiveToolFailures": 3,
-    "noProgressReads": 6
+    "noProgressReads": 6,
+    "maxTurnPromptTokens": 20000000,
+    "maxTurnCostUsd": 12
   },
   "routing": {
     "enabled": true,

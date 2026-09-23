@@ -4,12 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { appendQueue, parseIndex } from "../lib/markdown.ts";
+import { uncertaintyDefaults } from "../extensions/routing.ts";
 import {
   checkpointOnBound,
   firstUnwrittenPath,
   runBoundAbort,
-  uncertaintyDefaults,
-} from "../extensions/routing.ts";
+} from "../extensions/bounds.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

@@ -51,6 +51,7 @@ interface TelemetryBag {
   resolvedParentTurnId: string | null;
   hookSeq: number;
   lastDeclaredHook: string;
+  retriedPrompts: Set<string>;
 }
 
 function emptyUsage(): TurnUsage {
@@ -96,6 +97,7 @@ function freshBag(): TelemetryBag {
     resolvedParentTurnId: null,
     hookSeq: 0,
     lastDeclaredHook: "",
+    retriedPrompts: new Set(),
   };
 }
 
@@ -128,6 +130,8 @@ export interface BoundSnapshot {
   consecutiveFailures: number;
   reads: number;
   edits: number;
+  promptTokens: number;
+  costUsd: number;
 }
 
 interface TurnState {
@@ -237,7 +241,8 @@ export function notePrompt(sessionId: string, prompt: string): boolean {
 }
 
 export function turnSnapshot(): BoundSnapshot {
-  const turn = bag().turn;
+  const state = bag();
+  const turn = state.turn;
   return {
     sessionId: turn.sessionId,
     turnId: turn.turnId,
@@ -246,7 +251,18 @@ export function turnSnapshot(): BoundSnapshot {
     consecutiveFailures: turn.consecutiveFailures,
     reads: turn.reads,
     edits: turn.edits,
+    promptTokens: state.turnUsage.prompt,
+    costUsd: state.turnUsage.cost,
   };
+}
+
+/** One retry of this prompt. A checkpoint prompt is already the retry. */
+export function claimBoundRetry(prompt: string): boolean {
+  if (!prompt || prompt.startsWith("bounded at ")) return false;
+  const seen = bag().retriedPrompts;
+  if (seen.has(prompt)) return false;
+  seen.add(prompt);
+  return true;
 }
 
 export function bumpLoopIndex(): number {
@@ -1057,6 +1073,8 @@ export interface BoundConfig {
   maxTurnWallClockMs: number;
   maxConsecutiveToolFailures: number;
   noProgressReads: number;
+  maxTurnPromptTokens: number;
+  maxTurnCostUsd: number;
 }
 
 export const DEFAULT_BOUNDS: BoundConfig = {
@@ -1064,9 +1082,22 @@ export const DEFAULT_BOUNDS: BoundConfig = {
   maxTurnWallClockMs: 600_000,
   maxConsecutiveToolFailures: 3,
   noProgressReads: 6,
+  // Baseline turn: 9.27M prompt tokens and $5.08 provider across 60 rounds, stopped mid-spec.
+  // A budget at that line would have stopped the same turn earlier. Twice that leaves room
+  // for the three sections; loop depth stays the backstop.
+  maxTurnPromptTokens: 20_000_000,
+  maxTurnCostUsd: 12,
 };
 
 export function boundReason(snapshot: BoundSnapshot, config: BoundConfig = DEFAULT_BOUNDS): string | null {
+  const promptTokens = snapshot.promptTokens ?? 0;
+  const costUsd = snapshot.costUsd ?? 0;
+  if (promptTokens >= config.maxTurnPromptTokens) {
+    return `max turn prompt tokens ${promptTokens} >= ${config.maxTurnPromptTokens}`;
+  }
+  if (costUsd >= config.maxTurnCostUsd) {
+    return `max turn cost ${costUsd} >= ${config.maxTurnCostUsd}`;
+  }
   if (snapshot.loopIndex >= config.maxLoopDepth) {
     return `max loop depth ${config.maxLoopDepth} (loop_index ${snapshot.loopIndex})`;
   }

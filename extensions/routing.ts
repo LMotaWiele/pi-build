@@ -4,12 +4,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import fs from "node:fs";
-import path from "node:path";
 import { decide } from "./jev/adapter.ts";
 import { tierSelectQuestions } from "./jev/questions.ts";
 import { buildState, decisionSupplements } from "./jev/state-builder.ts";
-import { appendQueue } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
 import {
   fallbackChain,
@@ -25,22 +22,14 @@ import {
 import {
   activeTierName,
   attachTelemetry,
-  boundReason,
-  type BoundConfig,
-  DEFAULT_BOUNDS,
   extensionEnabled,
   getOpenNote,
   explainOneShot,
   notePrompt,
-  noteRunAborted,
   readPiSettings,
-  recordToolCall,
   selectTier,
   setActiveTier,
-  setLastRecap,
   settingsBlock,
-  turnSnapshot,
-  writtenFiles,
   type TierAnswers,
 } from "../lib/telemetry.ts";
 
@@ -94,57 +83,6 @@ export function formatTierSection(tiers: Partial<Record<string, { modelId: strin
   return lines.join("\n");
 }
 
-export function firstUnwrittenPath(noteText: string | null, written: string[]): string {
-  if (!noteText) return "(unknown)";
-  const found = noteText.match(/(?:[\w.+-]+\/)*[\w.+-]+\.[A-Za-z0-9]+/g) ?? [];
-  for (const candidate of found) {
-    const hit = written.some((file) => file === candidate || file.endsWith(`/${candidate}`) || candidate.endsWith(`/${file}`));
-    if (!hit) return candidate;
-  }
-  return "(unknown)";
-}
-
-export function boundCheckpointLine(reason: string, written: string[], resumeFrom: string): string {
-  return `bounded at ${reason}; wrote ${written.join(", ")}; resume from ${resumeFrom}`;
-}
-
-export async function runBoundAbort(input: {
-  reason: string;
-  written: string[];
-  resumeFrom: string;
-  queueAppend: (item: string, source: string) => void | Promise<void>;
-  setRecap: (line: string) => void;
-  abort: () => void;
-}): Promise<void> {
-  try {
-    await checkpointOnBound(input);
-  } catch (err) {
-    console.error("[bounds] checkpoint failed", err);
-  }
-  input.abort();
-}
-
-export async function checkpointOnBound(input: {
-  reason: string;
-  written: string[];
-  resumeFrom: string;
-  queueAppend: (item: string, source: string) => void | Promise<void>;
-  setRecap: (line: string) => void;
-}): Promise<void> {
-  if (input.written.length === 0) return;
-  const line = boundCheckpointLine(input.reason, input.written, input.resumeFrom);
-  try {
-    await input.queueAppend(line, "SPEC-delegation-ab §3.1");
-  } catch (err) {
-    console.error("[bounds] queue_append failed", err);
-  }
-  try {
-    input.setRecap(line);
-  } catch (err) {
-    console.error("[bounds] setLastRecap failed", err);
-  }
-}
-
 function asBool(value: unknown): boolean {
   return value === true;
 }
@@ -153,22 +91,13 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
   try {
     const settings = readPiSettings();
     const routingOn = extensionEnabled(settings, "routing");
-    const boundsOn = extensionEnabled(settings, "bounds");
+    if (!routingOn) return;
+    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "routing");
     const routingBlock = settingsBlock(settings, "routing");
-    const boundsBlock = settingsBlock(settings, "bounds");
     const tiers = stringMap(routingBlock["tiers"]);
-    if (!routingOn && !boundsOn && Object.keys(tiers).length === 0) return;
-    attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0]);
-    const bounds: BoundConfig = {
-      maxLoopDepth: numberOr(boundsBlock["maxLoopDepth"], DEFAULT_BOUNDS.maxLoopDepth),
-      maxTurnWallClockMs: numberOr(boundsBlock["maxTurnWallClockMs"], DEFAULT_BOUNDS.maxTurnWallClockMs),
-      maxConsecutiveToolFailures: numberOr(boundsBlock["maxConsecutiveToolFailures"], DEFAULT_BOUNDS.maxConsecutiveToolFailures),
-      noProgressReads: numberOr(boundsBlock["noProgressReads"], DEFAULT_BOUNDS.noProgressReads),
-    };
     const stateBudget = numberOr(routingBlock["stateBudgetTokens"], 4000);
     const uncertain = uncertaintyDefaults(routingBlock["defaultOnUncertain"]);
     let decidedPrompt = "";
-    let boundFired = false;
     let plan: RoutingPlan | null = null;
     let lastCwd = process.cwd();
     const thinkingLevels = (settings["modelThinkingLevels"] ?? {}) as Record<string, unknown>;
@@ -216,14 +145,6 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
       halt(ctx, lines);
     };
 
-    const appendLiveQueue = (item: string, source: string) => {
-      const memory = settingsBlock(readPiSettings(), "memoryGate");
-      const indexRel = typeof memory["indexPath"] === "string" ? memory["indexPath"] : ".agent/notes/INDEX.md";
-      const file = path.resolve(findProjectRoot(lastCwd), indexRel);
-      const today = new Date().toISOString().slice(0, 10);
-      fs.writeFileSync(file, appendQueue(fs.readFileSync(file, "utf8"), item, source, today));
-    };
-
     pi.on("session_start", async (_event, ctx) => {
       lastCwd = ctx.cwd;
       plan = await resolvePlan(ctx);
@@ -248,43 +169,7 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
       halt(ctx, lines);
     });
 
-    const fireBound = (ctx: { abort: () => void }, reason: string) => {
-      if (!boundsOn || boundFired) return;
-      boundFired = true;
-      noteRunAborted();
-      const snap = turnSnapshot();
-      recordToolCall({
-        toolName: "bound",
-        arguments: { reason, loopIndex: snap.loopIndex, elapsedMs: snap.elapsedMs },
-        path: null,
-        resultBytes: reason.length,
-        outcome: "blocked",
-        blockedBy: "bounds",
-      });
-      pi.appendEntry("pi-build-bound", { reason, turnId: snap.turnId });
-      console.error(`[bounds] ${reason}`);
-      const written = writtenFiles();
-      const note = getOpenNote();
-      let noteText: string | null = null;
-      if (note?.path) {
-        try {
-          noteText = fs.readFileSync(note.path, "utf8");
-        } catch {
-          noteText = null;
-        }
-      }
-      void runBoundAbort({
-        reason,
-        written,
-        resumeFrom: firstUnwrittenPath(noteText, written),
-        queueAppend: appendLiveQueue,
-        setRecap: setLastRecap,
-        abort: () => ctx.abort(),
-      });
-    };
-
-    if (routingOn) {
-      pi.on("before_agent_start", async (event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
         if (explainOneShot()) return;
         lastCwd = ctx.cwd;
         if (!plan) plan = await resolvePlan(ctx);
@@ -294,7 +179,6 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
         notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
         if (event.prompt === decidedPrompt) return;
         decidedPrompt = event.prompt;
-        boundFired = false;
         const note = getOpenNote();
         const extra = decisionSupplements(findProjectRoot(ctx.cwd));
         const state = buildState({
@@ -357,17 +241,7 @@ export default async function routingExtension(pi: ExtensionAPI): Promise<void> 
         else console.error(`[routing] no thinking level for ${selected.modelId}; leaving the current level`);
         setActiveTier(tier, selected.modelId);
         console.error(`[routing] tier=${tier} model=${selected.modelId}`);
-      });
-    }
-
-    if (boundsOn) {
-      const check = (ctx: { abort: () => void }) => {
-        const reason = boundReason(turnSnapshot(), bounds);
-        if (reason) fireBound(ctx, reason);
-      };
-      pi.on("message_end", (_event, ctx) => check(ctx));
-      pi.on("tool_result", (_event, ctx) => check(ctx));
-    }
+    });
   } catch (err) {
     console.error("[routing] failed to load; other extensions continue", err);
   }

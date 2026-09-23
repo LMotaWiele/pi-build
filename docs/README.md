@@ -27,3 +27,4 @@ Trial databases and runner logs under `/tmp` are local measurement output. They 
 | Six at `78ce7cb` | `/tmp/pi-build-ab-set3/telemetry.db` |
 | Six at `4384c58` | `/tmp/pi-build-ab-set4/telemetry.db` |
 | Stage 1 context baseline, 2026-09-23 | `/tmp/pi-build-context-s1/telemetry.db` |
+| Stage 2 harness bounds, 2026-09-23 | `/tmp/pi-build-harness-s2/telemetry.db` |
