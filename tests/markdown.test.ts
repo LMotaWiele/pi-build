@@ -194,18 +194,22 @@ test("session recap predicate, explain gate, known.md, tier map", () => {
   assert.equal(selectTier({ single_file_edit: false, needs_repo_reasoning: false, unfamiliar_stack: false, spec_exists: false, reversible: false }), "escalate");
   const text = extractAssistantText('{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"One. Two."}]}}\n');
   assert.equal(text, "One. Two.");
-  const big = formatIndexInjection(
-    {
-      notes: [{ topic: "t", file: "t.md", status: "open", oneLiner: "x".repeat(9000) }],
-      activeNext: Array.from({ length: 12 }, (_, i) => ({ n: String(i + 1), item: "q".repeat(200), source: "human", added: "2026-09-21" })),
-      doNot: ["stay"],
-      glossary: {},
-      raw: "",
-      schemaVersion: 1,
-    },
-    estimateTokens,
-    2000,
-  );
+  const parsed = {
+    notes: [{ topic: "t", file: "t.md", status: "open", oneLiner: "x".repeat(9000) }],
+    activeNext: Array.from({ length: 12 }, (_, i) => ({ n: String(i + 1), item: "q".repeat(200), source: "human", added: "2026-09-21" })),
+    doNot: ["stay"],
+    glossary: { Mode: "a label" },
+    raw: "",
+    schemaVersion: 1,
+  };
+  const capped = formatIndexInjection(parsed, estimateTokens, 2000);
+  assert.equal(capped.text.includes("Notes:"), false);
+  assert.equal(capped.text.includes("Glossary"), false);
+  assert.equal(capped.text.includes("x".repeat(20)), false);
+  assert.match(capped.text, /Active next/);
+  assert.match(capped.text, /Do not:\n- stay/);
+  const big = formatIndexInjection(parsed, estimateTokens, 100);
   assert.equal(big.truncated, true);
   assert.match(big.text, /more queue rows omitted/);
+  assert.equal(big.text.includes("Notes:"), false);
 });

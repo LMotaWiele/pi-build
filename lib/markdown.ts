@@ -660,29 +660,20 @@ export interface IndexInjection {
 }
 
 export function formatIndexInjection(parsed: ParsedIndex, estimate: (text: string) => number, budgetTokens = 2000): IndexInjection {
-  const noteLines = parsed.notes.map((row) => `| ${row.topic} | ${row.file} | ${row.status} | ${row.oneLiner} |`);
-  const notesTable = ["| Topic | File | Status | One-liner |", "|---|---|---|---|", ...noteLines].join("\n");
   const doNot = parsed.doNot.length ? parsed.doNot.map((item) => `- ${item}`).join("\n") : "- (none)";
-  const glossary =
-    Object.keys(parsed.glossary).length === 0
-      ? ""
-      : `\n\nGlossary:\n${Object.entries(parsed.glossary)
-          .map(([name, means]) => `- ${name}: ${means}`)
-          .join("\n")}`;
-
   const queueLines = (rows: QueueRow[]) =>
     rows.length
       ? ["| # | Item | Source | Added |", "|---|---|---|---|", ...rows.map((row) => `| ${row.n} | ${row.item} | ${row.source} | ${row.added} |`)].join("\n")
       : "(empty)";
 
-  const full = `Notes:\n${notesTable}\n\nActive next:\n${queueLines(parsed.activeNext)}\n\nDo not:\n${doNot}${glossary}`;
+  const full = `Active next:\n${queueLines(parsed.activeNext)}\n\nDo not:\n${doNot}`;
   if (estimate(full) <= budgetTokens) {
     return { text: full, tokens: estimate(full), truncated: false };
   }
   const kept = parsed.activeNext.slice(0, 10);
   const rest = parsed.activeNext.length - kept.length;
   const truncatedQueue = `${queueLines(kept)}${rest > 0 ? `\n(${rest} more queue rows omitted)` : ""}`;
-  const text = `Notes:\n${notesTable}\n\nActive next:\n${truncatedQueue}\n\nDo not:\n${doNot}${glossary}`;
+  const text = `Active next:\n${truncatedQueue}\n\nDo not:\n${doNot}`;
   return { text, tokens: estimate(text), truncated: true };
 }
 

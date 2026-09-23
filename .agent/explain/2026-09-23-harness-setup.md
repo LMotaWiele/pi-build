@@ -6,6 +6,8 @@ The stage 2 turn finished the three sections. No bound fired. Loop depth stopped
 
 Copy tests, re-run after the turn: 47 passed, 0 failed, 1 skipped. Stage 0's copy reported 49 / 0 / 1. Failures stayed at 0.
 
+Stage 3 made no model call. The index injection on the baseline index was 650 tokens. After the cap to Active next and Do not, the same ten queue rows are 614 tokens.
+
 | Metric | Stage 0 | Stage 1 | Stage 2 | Against stage 0 | Against previous |
 |---|---|---|---|---|---|
 | Rounds, completed, bound | 60, no, max loop depth 60 | no model call | 49, yes, none | finished inside the backstop | same, stage 1 had no call |
