@@ -1,0 +1,24 @@
+--- a/.pi/extensions/smart-router/extension-setup.ts
++++ b/.pi/extensions/smart-router/extension-setup.ts
+@@ -1,5 +1,4 @@
+ import {
+-  AuthStorage,
+   ModelRegistry,
+   type ExtensionAPI,
+ } from '@earendil-works/pi-coding-agent';
+@@ -35,8 +34,13 @@
+   runtime: SmartRouterRuntime;
+   datasetNotify: DatasetNotify;
+ }> {
+-  const authStorage = AuthStorage.create();
+-  const modelRegistry = ModelRegistry.inMemory(authStorage);
++  // Seam: pi 0.87 registry bootstrap. session_start binds the live registry.
++  const modelRegistry = new ModelRegistry({
++    getAvailableSnapshot: () => [],
++    getModels: () => [],
++    refresh: async () => {},
++    getError: () => undefined,
++  });
+   const hydraMatcher = await initHydraMatcher();
+   const store = createExtensionStore(cwd);
+   const operatorConfig = resolveOperatorConfigFromEnv();

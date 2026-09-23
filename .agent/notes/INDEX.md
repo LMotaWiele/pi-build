@@ -62,6 +62,8 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 | 41 | explore can edit and write. The project definition and the user definition both list those tools. A read-only explore dispatch returns nothing. This stage made no model call, so provider cost per round stays 0.0864 and cache read share stays 0.971. | SPEC-harness-setup §3.1 | 2026-09-23 |
 | 42 | A parent can start a nested pi from bash and escape every bound. Row 25 records the same escape. Not fixed in this stage. Section 9 fixes it if delegation is built. | SPEC-harness-setup §3.3 | 2026-09-23 |
 | 43 | Stage 4 kept the loosened selectTier. The replay stayed on escalate and gpt-5.6-sol and finished in 40 rounds. Provider cost per round was 0.0682 against stage 2's 0.0864. Cache read share was 0.961 against 0.971. Copy tests were 49 passed, 0 failed, 1 skipped. | SPEC-harness-setup §4.1 | 2026-09-23 |
+| 44 | Stage 4 kept pi-smart-router 0.8.0. The replay finished on economical-cloud and gpt-5.6-luna in 46 rounds. Provider cost per round was 0.001489 against the loosened selector's 0.0682. Cache read share was 0.9535 against 0.9613. Copy tests were 47 passed, 1 failed, 0 skipped. The failure is the f44a938 check that the delegation databases exist. implement is pinned to openai-codex/gpt-5.6-luna. SMART_ROUTER_DATASET=1 is set when telemetry attaches. smart-router/auto stays out of enabledModels. | SPEC-harness-setup §4.2 | 2026-09-23 |
+| 45 | Jev decisions pi-smart-router cannot express, recorded before routing.ts and jev/ were removed. selectTier sends needs_repo_reasoning or unfamiliar_stack to escalate, and spec_exists with reversible to work even for a multi-file edit, otherwise escalate. Uncertainty mode escalate answers single_file_edit false, needs_repo_reasoning true, unfamiliar_stack false, spec_exists false, reversible false. Mode work is that boolean inverse, and unfamiliar_stack true still selects escalate. The host map was scout and explain on gpt-5.6-luna, work on gpt-5.6-terra, escalate on gpt-5.6-sol. The router does not ask those questions. | SPEC-harness-setup §4.3 | 2026-09-23 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.
@@ -70,7 +72,7 @@ Close a row by deleting it. Do not leave completed rows with a status marker —
 
 Standing constraints. These bind every session in this repo until removed here.
 
-- _(none yet)_
+- Provider cost per round on the stage 4 router replay is under half of stage 0, and the requested sections' tests passed. Do not add another extension. Sections 5 and 6 stay unrun. One patch to pi-smart-router already names the pi 0.87 registry seam. A second patch to that package stops the run.
 
 ## Glossary (optional)
 

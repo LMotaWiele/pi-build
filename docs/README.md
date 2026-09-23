@@ -29,3 +29,4 @@ Trial databases and runner logs under `/tmp` are local measurement output. They 
 | Stage 1 context baseline, 2026-09-23 | `/tmp/pi-build-context-s1/telemetry.db` |
 | Stage 2 harness bounds, 2026-09-23 | `/tmp/pi-build-harness-s2/telemetry.db` |
 | Stage 4 loosened selectTier, 2026-09-23 | `/tmp/pi-build-harness-s4/telemetry.db` |
+| Stage 4b pi-smart-router, 2026-09-23 | `/tmp/pi-build-harness-s4b/telemetry.db` |

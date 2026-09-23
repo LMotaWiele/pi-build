@@ -120,12 +120,11 @@ done < "$REPO/secrets.example.env"
 if [ "$OFFLINE" -eq 1 ]; then
   echo "skipped: no credentials — tier smoke"
   echo "skipped: no credentials — note_open, queue_append, guarded read"
-  echo "skipped: no credentials — decide()"
   exit 0
 fi
 
 if [ "$missing" -ne 0 ]; then
-  echo "FAIL: provider smoke, note_open, queue_append, guarded read, and decide() were not run because a secret is unset" >&2
+  echo "FAIL: provider smoke, note_open, queue_append, and guarded read were not run because a secret is unset" >&2
   exit 1
 fi
 
@@ -150,40 +149,4 @@ done
 pi -p "Call note_open for topic How to write notes, then queue_append item doctor-smoke source human, then read README.md once. Reply OK." \
   --model "$(jq -r '.routing.tiers.scout' "$REPO/settings/hosts/machina.json")" --thinking off --no-session \
   || fail "custom tool smoke"
-
-tmp="$(mktemp /tmp/pi-build-decide.XXXXXX.ts)"
-endpoint="$(jq -r '.routing.decisionEndpoint' "$REPO/settings/hosts/machina.json")"
-decision_model="$(jq -r '.routing.decisionModel' "$REPO/settings/hosts/machina.json")"
-key_env="$(jq -r '.routing.decisionApiKeyEnv // "OPENROUTER_API_KEY"' "$REPO/settings/hosts/machina.json")"
-cat > "$tmp" << EOF
-import { decide } from "${REPO}/extensions/jev/adapter.ts";
-import { tierSelectQuestions } from "${REPO}/extensions/jev/questions.ts";
-const url = ${endpoint@Q};
-const model = ${decision_model@Q};
-const response = await fetch(url, {
-  method: "POST",
-  headers: {
-    authorization: "Bearer " + (process.env[${key_env@Q}] ?? process.env.OPENROUTER_API_KEY ?? ""),
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({
-    model,
-    state: "doctor smoke",
-    questions: { single_file_edit: { type: "noul", instructions: "Is this one file?", criteria: { true: "yes", false: "no" } } },
-  }),
-});
-const text = await response.text();
-if (!response.ok) {
-  console.error("decide() HTTP " + response.status + " " + text.slice(0, 400));
-  process.exit(1);
-}
-const answers = await decide("doctor smoke", tierSelectQuestions(), { timeoutMs: 8000, url, model });
-if (typeof answers.single_file_edit === "undefined") {
-  console.error("decide() returned no answers");
-  process.exit(1);
-}
-console.log("decide ok");
-EOF
-node --experimental-strip-types "$tmp" || { rm -f "$tmp"; fail "decide() round-trip"; }
-rm -f "$tmp"
-ok "decide()"
+ok "note_open, queue_append, guarded read"

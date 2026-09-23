@@ -3,6 +3,7 @@ tests/fixtures/ab/node_modules/
 trust.json
 npm/
 *.db
+.pi-smart-router/
 sessions/
 *.env
 !secrets.example.env

@@ -4,7 +4,6 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { appendQueue, parseIndex } from "../lib/markdown.ts";
-import { uncertaintyDefaults } from "../extensions/routing.ts";
 import {
   checkpointOnBound,
   firstUnwrittenPath,
@@ -90,16 +89,7 @@ test("a throwing queue_append still reaches abort", async () => {
   assert.equal(aborted, true);
 });
 
-test("uncertainty defaults and the first unwritten path", () => {
-  const work = uncertaintyDefaults("work");
-  assert.equal(work.single_file_edit, true);
-  assert.equal(work.needs_repo_reasoning, false);
-  assert.equal(work.unfamiliar_stack, true);
-  assert.equal(work.spec_exists, true);
-  assert.equal(work.reversible, true);
-  const escalate = uncertaintyDefaults("escalate");
-  assert.equal(escalate.single_file_edit, false);
-  assert.equal(escalate.needs_repo_reasoning, true);
+test("the first unwritten path", () => {
   assert.equal(firstUnwrittenPath("touch src/a.ts then src/b.ts", ["src/a.ts"]), "src/b.ts");
   assert.equal(firstUnwrittenPath(null, []), "(unknown)");
 });

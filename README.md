@@ -1,6 +1,6 @@
 # pi-build
 
-Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.87.0). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, one model tier per user prompt, and a local record of what the tools did.
+Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.87.0). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, a pinned session model, and a local record of what the tools did.
 
 The clone can live anywhere. `install.sh` symlinks it into `~/.pi/agent/`.
 
@@ -11,14 +11,14 @@ Stock pi reads whatever the model asks to read, stays on the model you picked, a
 - **Memory stays in the prefix.** On session start, the project's `.agent/notes/INDEX.md` is injected into a prompt section named `pi_build_memory`. The agent opens one note per task with `note_open`, patches one front-matter field with `note_update`, and appends the queue with `queue_append`. With `memoryGate.blockRawNotesReads` true, a raw `read` of `.agent/notes/` is blocked. Explanations are a different thing: `explain_write` stores them under `.agent/explain/`, and they are not indexed.
 - **Repeated reads get cheaper.** Inside one turn, a second read of the same file replaces the previous tool result instead of sending the file again. After a write, a repeat read returns a unified diff of the changed lines. If those lines are more than half of the new file, the full file is returned. A read with `offset` and `limit` always passes through.
 - **Compaction does not drop the task.** `recap` writes a short summary the next turn can see. `explain` asks a one-shot process, on the explain tier from your host file and with thinking off, for a walkthrough after an edit turn. That walkthrough is for you. It is not a note. If that model id is not an exact catalog match, the walkthrough is skipped and the turn still finishes.
-- **The model is chosen once per prompt.** Tiers are provider/model ids in your host file. One id is enough: point every tier at it, or set `routing.enabled` to false and set `defaultModel`. Several ids are how scout, work, escalate, and explain take different models. A decision call picks work or escalate before the first inference of a new user prompt. The call's URL, model, and API-key variable are `routing.decisionEndpoint`, `routing.decisionModel`, and `routing.decisionApiKeyEnv` (the sample uses Jev at `typesafe/jev-1.13` on OpenRouter). If the decision call fails or comes back uncertain, the turn escalates. The session model is not switched in the middle of a turn. Thinking level comes from `modelThinkingLevels` for the resolved id.
+- **The session model is pi-smart-router.** `routing.enabled` is false, so this repo does not run a second router. The router registers `smart-router/auto`. That id stays out of `enabledModels`. The `routing.tiers` map remains for the bound retry, which resolves `escalate`, and for the explain model. Thinking level for a resolved id comes from `modelThinkingLevels`.
 - **A turn can stop itself.** Bounds abort the turn, without an approval prompt, when the loop passes 60 steps, the turn passes 10 minutes, three tool calls fail in a row, or six reads in a row make no progress.
 - **Tool use is logged locally** in `~/.pi/agent/telemetry.db` (override with `PI_BUILD_TELEMETRY_DB`). `scripts/report.sql` summarizes cost, cache hit rate, escalation share, deduped reads, note opens, blocked note reads, and bound turns.
 - **Web search and subagents are pinned.** `pi-web-access` v0.30.0 reads `~/.pi/agent/web-search.json`: workflow `none`, inline content capped, image and PDF off. `pi-subagent` is pinned to commit `ce26a686f2571188d2e2b4d586e15a82606a7b72`. The `subagent` object in the host settings is not read by that package. Its own default depth is 3. The depth recorded in the host file is 2, which you set with `pi --subagent-max-depth 2` or `PI_SUBAGENT_MAX_DEPTH=2`. Cycle prevention is already the package default.
 - **Plan mode** (`/plan`, or Ctrl+Alt+P) is the pi example: read-only exploration, then execution of the numbered plan. **Post-edit typecheck** runs `tsc --noEmit` after a TypeScript edit or write, debounced, and reports the result in the status line.
 - **Cache warming is off.** `models.json` keeps the GPT-5.6 context window at 272000 and the prompt-cache TTL at 1800 seconds, so a long-context price does not reprice the whole request. `defaultProjectTrust` is `always`.
 
-Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, `bounds`, and `routing` turns off when its `enabled` field is `false`. Leaving the field out leaves the extension on.
+Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, and `bounds` turns off when its `enabled` field is `false`. Leaving the field out leaves the extension on. `routing.enabled` stays false. There is no routing extension. The block is the tier map.
 
 ## Requirements
 
@@ -46,9 +46,9 @@ The directory name does not matter. Clone it wherever you keep source.
 4. Creates `~/.config/pi/env` (mode 600) from `secrets.example.env` when the file is missing. Pi does not load this file. Export it yourself (see below).
 5. Runs `pi install` for the two pinned git packages, then `./doctor.sh`.
 
-The first full `./doctor.sh` exits non-zero until every name in `secrets.example.env` is exported. The symlinks and the package installs have already happened by then. `./doctor.sh --offline` validates the checkout without those names.
+`secrets.example.env` lists no required names. Chat models on the author's host use `/login`. `./doctor.sh --offline` validates the checkout without a provider call.
 
-Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` before installing if this machine is not the author's. Put no secrets in that file. The `packages` array is written by `pi install`; leave it pinned to the two refs above. Replace `provider/model-id` with any id pi can resolve as `provider/id`. The same id in every tier is a valid setup. A decision endpoint is what turns on per-task routing; with routing disabled, `defaultModel` is the only model the session needs.
+Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` before installing if this machine is not the author's. Put no secrets in that file. The `packages` array lists the two git refs, `npm:pi-context-usage`, and `npm:pi-smart-router@0.8.0`. Replace `provider/model-id` with any id pi can resolve as `provider/id`. The same id in every tier is a valid setup. With routing disabled, `defaultModel` is the model a session uses until something passes `--model`.
 
 ## Credentials
 
@@ -60,15 +60,11 @@ source ~/.config/pi/env
 set +a
 ```
 
-Put that in the shell profile you use to launch pi, or export the variables another way. Doctor requires every name listed in `secrets.example.env`. The committed file lists the author's Jev key:
+Put that in the shell profile you use to launch pi, or export the variables another way. Doctor requires every name listed in `secrets.example.env`. The committed file lists none.
 
-| Variable | Used for |
-|---|---|
-| `OPENROUTER_API_KEY` | The author's Jev routing call (`routing.decisionApiKeyEnv`). Routing escalates when this call cannot be made. |
+Any pi-compatible provider works. Put that provider's id in the host file (`provider/model-id`, or `openrouter/openai/gpt-5.6-luna` when the model id itself contains a slash) and put the key's variable name in `secrets.example.env`.
 
-Any pi-compatible provider works. Put that provider's id in the host file (`provider/model-id`, or `openrouter/openai/gpt-5.6-luna` when the model id itself contains a slash) and put the key's variable name in `secrets.example.env`. The decision call is optional. Its default URL and model live only in `extensions/jev/adapter.ts`; the host file overrides both.
-
-On the author's host, scout and explain are `openai-codex/gpt-5.6-luna`, work and the default model are `openai-codex/gpt-5.6-terra`, and escalate is `openai-codex/gpt-5.6-sol`. Those are the ChatGPT Plus or Pro subscription, signed in with `/login`, not an OpenAI API key. The subscription catalog exposes all three ids. If a tier's id is missing from the catalog at startup, the session uses the next tier down (`escalate`, then `work`, then `scout`) and prints that fallback on every turn that uses it. A tier that resolves to nothing does not receive traffic.
+On the author's host, scout and explain are `openai-codex/gpt-5.6-luna`, work and the default model are `openai-codex/gpt-5.6-terra`, and escalate is `openai-codex/gpt-5.6-sol`. Those are the ChatGPT Plus or Pro subscription, signed in with `/login`, not an OpenAI API key. The subscription catalog exposes all three ids. The bound retry and the explain walkthrough resolve a tier through that map. A missing id falls through `escalate`, then `work`, then `scout`.
 
 You can also store a provider key with `/login`. `doctor.sh` still requires the names in `secrets.example.env` for the live checks.
 
@@ -79,7 +75,7 @@ pi auth check --provider openai --json --no-refresh
 pi auth check --provider openai-codex --json --no-refresh
 ```
 
-Session start resolves every tier through pi's model registry. The resolved `provider/id` has to equal the configured string exactly. A partial match, including an OpenRouter model whose id contains `openai/gpt-5.6-luna`, refuses to start and names the tier, the configured id, the expected provider, and the resolved one. The same refusal fires when the registry has the exact id but that provider has no credentials: pi may already be sitting on another provider's model with the same id, selection fails, and the process exits before the prompt. Headless mode does not stop a prompt on shutdown alone. Until the configured provider is authenticated, that exit is what you want: the session does not silently bill a different provider. If one tier cannot be selected and a lower tier can, that turn uses the lower tier and says so. `./doctor.sh --offline` does not ask the live registry, so a fresh checkout can still be validated.
+A tier id has to equal a registry `provider/id` exactly. A partial match does not count. `./doctor.sh --offline` does not ask the live registry, so a fresh checkout can still be validated. Pass `--model smart-router/auto` to start a session on the router. Leave that id out of `enabledModels`.
 
 `~/.config/pi/env`, `auth.json`, and `trust.json` are gitignored.
 
@@ -97,7 +93,7 @@ Global instructions from this repo's `agent/AGENTS.md` apply in every project. A
 
 **Plan mode.** `/plan` or Ctrl+Alt+P toggles read-only exploration. Write tools come back when you leave the plan or execute it.
 
-**Models.** Routing may change the model at the start of a turn when the user prompt text changes. Escalation stays on the session model for that tier. Do not switch the main session model in the middle of a turn. Each turn appends one cost line to the session log: tier, inference calls, prompt tokens, cache hit, completion tokens, reasoning share, turn cost, and cumulative session cost.
+**Models.** pi-smart-router pins the session model. A bound that trips after a file was written retries that turn once at the escalate tier. Each turn appends one cost line to the session log: tier, inference calls, prompt tokens, cache hit, completion tokens, reasoning share, turn cost, and cumulative session cost. Telemetry copies the router's tier when `SMART_ROUTER_DATASET` is `1`, which the harness sets when it attaches.
 
 **Web search.** After `pi-web-access` is installed, the agent gets `web_search`, `fetch_content`, `source_check`, and `get_search_content`. Provider choice is left to the package. Image and PDF tools are disabled in `settings/web-search.json`.
 
@@ -113,7 +109,7 @@ pi --subagent-max-depth 2
 "readGuard": { "enabled": false }
 ```
 
-The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `postEditTypecheck`, `bounds`, and `routing`. Plan mode has no settings flag; leave it with `/plan`.
+The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `postEditTypecheck`, and `bounds`. Plan mode has no settings flag; leave it with `/plan`.
 
 ## Check the install
 
@@ -125,7 +121,7 @@ The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `p
 
 `--offline` checks JSON, the versions in `deps.txt`, that `pi list` contains the pinned packages, the project's memory files, and the unit tests, then times `pi --version`. It prints `skipped: no credentials` for the live calls and exits 0 when that subset passes. `--project <path>` checks one project's memory files and exits. It does not start a session. A status in the index that disagrees with the note's `**Status:**` line fails the check.
 
-Full `./doctor.sh` still exits 1 when a name in `secrets.example.env` is unset. When those names are set it smokes each distinct tier id from `settings/hosts/machina.json`, calls `note_open` and `queue_append`, and requires the configured decision endpoint to return HTTP 200.
+Full `./doctor.sh` exits 1 when a name in `secrets.example.env` is unset. When every listed name is set, it smokes each distinct tier id from `settings/hosts/machina.json` and calls `note_open` and `queue_append`.
 
 Regenerate the per-project skill after editing the notes README:
 
@@ -153,11 +149,10 @@ sqlite3 ~/.pi/agent/telemetry.db < scripts/report.sql
 AGENTS.md                  this repo's contract
 agent/AGENTS.md            global instructions, symlinked into ~/.pi/agent/
 agent/models.json          the author's context window and prompt-cache TTL
-extensions/                memory, read guard, routing, recap, explain, plan mode
-extensions/jev/            the only code that knows the default decision URL
+extensions/                memory, read guard, bounds, recap, explain, plan mode
 lib/                       markdown, scaffold, skill, telemetry
 settings/hosts/machina.json    the author's models
-settings/hosts/example.json    portable host: one id, or several, plus a decision endpoint
+settings/hosts/example.json    portable host: one id, or several tier ids
 settings/web-search.json   pi-web-access config
 templates/agent-memory/    files copied into a project that lacks them
 .agent/                    this repo's own notes, skill, and explain directory
@@ -165,8 +160,6 @@ scripts/report.sql         one sqlite query over telemetry.db
 scripts/migrate-notes.js   write v1 siblings for a legacy notes tree
 install.sh  doctor.sh  deps.txt  secrets.example.env
 ```
-
-`extensions/jev/` has no `index.ts`, so pi does not load it as its own extension. `routing.ts` imports it.
 
 ## License
 

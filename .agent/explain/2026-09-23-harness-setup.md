@@ -10,16 +10,22 @@ Stage 3 made no model call. The index injection on the baseline index was 650 to
 
 Stage 4 kept the loosened `selectTier`. The decision still chose escalate and `gpt-5.6-sol`, so the lower cost is this turn's smaller context, not a move to Terra. The turn finished in 40 rounds with no bound fired. Copy tests, re-run after the turn: 49 passed, 0 failed, 1 skipped. No inference row has a null tier. Invalidation points stayed at 3. Peak context is 163,680, still with 0 compactions.
 
-| Metric | Stage 0 | Stage 2 | Stage 4 | Stage 4 against stage 0 | Stage 4 against stage 2 |
-|---|---|---|---|---|---|
-| Rounds, completed, bound | 60, no, max loop depth 60 | 49, yes, none | 40, yes, none | finished inside the backstop | 9 fewer rounds, still finished |
-| Prompt tokens | 9,271,183 | 7,543,847 | 4,322,116 | −4,949,067 | −3,221,731 |
-| Cached tokens | 9,070,336 | 7,328,768 | 4,154,880 | −4,915,456 | −3,173,888 |
-| Cache read share | 0.9783 | 0.9715 | 0.9613 | −0.0170 | −0.0102 |
-| Provider cost | $5.077842 | $4.232003 | $2.726336 | −$2.351506 | −$1.505667 |
-| Cost per round | $0.084631 | $0.086367 | $0.068158 | −$0.016473 | −$0.018209 |
-| Prompt tokens per round | 154,520 | 153,955 | 108,053 | −46,467 | −45,902 |
-| Peak context, compactions | 200,730, 0 | 200,990, 0 | 163,680, 0 | −37,050, still 0 | −37,310, still 0 |
-| Invalidation points per turn | not traced | 3 | 3 | first measured figure was 3 | +0 |
-| Tests passed / failed / skipped | 49 / 0 / 1 | 47 / 0 / 1 | 49 / 0 / 1 | failures unchanged at 0 | failures unchanged at 0 |
-| Tool errors, longest run | 7, 2 | 3, 1 | 2, 1 | fewer errors | one fewer error |
+Stage 4b kept `pi-smart-router` 0.8.0. Routing stayed disabled, so the two routers did not run together. Every parent row is `economical-cloud` on `gpt-5.6-luna`. The turn finished in 46 rounds, no bound fired, and peak context is 61,890 with 0 compactions. Provider cost per round is $0.001489 against stage 4's $0.068158 and stage 0's $0.084631. Cache read share is 0.9535 against 0.9613 and 0.9783. That is still the same high-cache shape, so the 9× prune break-even stays. Parent invalidation points are 2. One child session is excluded from the parent totals. No inference row has a null tier.
+
+The copy's suite is 47 passed, 1 failed, 0 skipped. The failure is the `f44a938` assertion that the delegation databases exist, and those files are not on this machine. Stage 4's copy reads 49 / 0 / 1 because that replay edited the same assertion into a skip. The tests for the three requested sections passed.
+
+Provider cost per round is under half of stage 0. Sections 5 and 6 stay uninstalled. One patch, `patches/pi-smart-router.patch`, names the pi 0.87 registry bootstrap seam. `routing.ts` and `jev/` are removed. `implement` is pinned to `openai-codex/gpt-5.6-luna`.
+
+| Metric | Stage 0 | Stage 2 | Stage 4 | Stage 4b | Stage 4b against stage 0 | Stage 4b against stage 4 |
+|---|---|---|---|---|---|---|
+| Rounds, completed, bound | 60, no, max loop depth 60 | 49, yes, none | 40, yes, none | 46, yes, none | finished inside the backstop | 6 more rounds, still finished |
+| Prompt tokens | 9,271,183 | 7,543,847 | 4,322,116 | 2,054,426 | −7,216,757 | −2,267,690 |
+| Cached tokens | 9,070,336 | 7,328,768 | 4,154,880 | 1,958,912 | −7,111,424 | −2,195,968 |
+| Cache read share | 0.9783 | 0.9715 | 0.9613 | 0.9535 | −0.0248 | −0.0078 |
+| Provider cost | $5.077842 | $4.232003 | $2.726336 | $0.068493 | −$5.009349 | −$2.657843 |
+| Cost per round | $0.084631 | $0.086367 | $0.068158 | $0.001489 | −$0.083142 | −$0.066669 |
+| Prompt tokens per round | 154,520 | 153,955 | 108,053 | 44,661 | −109,859 | −63,392 |
+| Peak context, compactions | 200,730, 0 | 200,990, 0 | 163,680, 0 | 61,890, 0 | −138,840, still 0 | −101,790, still 0 |
+| Invalidation points per turn | not traced | 3 | 3 | 2 | first measured figure was 3 | −1 |
+| Tests passed / failed / skipped | 49 / 0 / 1 | 47 / 0 / 1 | 49 / 0 / 1 | 47 / 1 / 0 | the failure is the missing delegation databases | requested-section tests passed |
+| Tool errors, longest run | 7, 2 | 3, 1 | 2, 1 | 5, 2 | fewer errors, same longest run | three more errors |

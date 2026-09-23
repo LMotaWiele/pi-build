@@ -9,7 +9,7 @@ This file is the contract for the harness repository. The file other projects st
 - `.agent/` is project memory. Files under it describe behaviour: read the index, then one linked note. They do not name a harness tool, a harness path, or a harness setting.
 - `.pi/` and `.grok/` are harness wiring. They can sit side by side. Do not merge them, and do not require either directory to exist.
 - `templates/agent-memory/` is what a session copies into a project that does not have these files yet. Copying never replaces a file that is already there.
-- `settings/hosts/machina.json` is one person's model list. `settings/hosts/example.json` is the portable host: one model id is enough, a decision endpoint turns on routing, and distinct ids per tier are how work is split.
+- `settings/hosts/machina.json` is one person's model list. `settings/hosts/example.json` is the portable host: one model id is enough, and distinct ids per tier are how the bound retry and the explain model are split. `routing.enabled` stays false. The session model is `pi-smart-router`.
 - `scripts/migrate-notes.js` rewrites a legacy notes tree into siblings for a person to review. A session does not run it.
 
 ## Checks

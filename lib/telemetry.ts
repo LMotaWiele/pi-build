@@ -621,6 +621,30 @@ export function setActiveTier(tier: string, model: string): void {
   state.activeModel = model;
 }
 
+/**
+ * pi-smart-router records its decision tier in `.pi-smart-router/state.db`.
+ * This process copies that tier when it has not selected one itself.
+ */
+export function readSmartRouterTier(cwd: string): string | null {
+  const dbPath = path.join(cwd, ".pi-smart-router", "state.db");
+  if (!fs.existsSync(dbPath)) return null;
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare("SELECT tier FROM dataset ORDER BY id DESC LIMIT 1").get() as { tier?: unknown } | undefined;
+    const tier = row?.tier;
+    return typeof tier === "string" && tier.length > 0 ? tier : null;
+  } catch {
+    return null;
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // A locked router database must not take the inference row down.
+    }
+  }
+}
+
 export function activeTierName(): string {
   return bag().activeTier;
 }
@@ -831,6 +855,8 @@ function wrapExtensionOn(pi: TelemetryHost, extensionName: string): void {
  * Each caller still names its own handlers. Third-party handlers stay unknown:<seq>.
  */
 export function attachTelemetry(pi: TelemetryHost, extensionName = "unnamed"): void {
+  // The router writes dataset.tier only when this is set. The inference row copies that tier.
+  process.env.SMART_ROUTER_DATASET = "1";
   wrapExtensionOn(pi, extensionName);
   installHookMapPatch();
   const state = bag();
@@ -881,8 +907,16 @@ export function attachTelemetry(pi: TelemetryHost, extensionName = "unnamed"): v
         messageStarted.delete(message.id);
       }
       const after = bag();
+      let tier = after.activeTier;
+      if (tier === "unassigned") {
+        const routed = readSmartRouterTier(process.cwd());
+        if (routed) {
+          setActiveTier(routed, message.model || after.activeModel || "");
+          tier = routed;
+        }
+      }
       recordInference({
-        tier: after.activeTier,
+        tier,
         model: message.model || after.activeModel || "unknown",
         promptTokens: usage.input ?? null,
         cachedTokens: usage.cacheRead ?? null,

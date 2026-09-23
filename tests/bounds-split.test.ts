@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import boundsExtension from "../extensions/bounds.ts";
-import routingExtension from "../extensions/routing.ts";
 import {
   beginUserTurn,
   boundReason,
@@ -134,10 +133,6 @@ test("token and cost budgets fire before the loop-depth backstop", () => {
 test("disabling routing leaves the bounds running", async () => {
   const { dir, settings } = workspace();
   await withSettings(settings, async () => {
-    const routing = fakePi();
-    await routingExtension(routing as never);
-    assert.equal(routing.handlers.get("message_end")?.length ?? 0, 0);
-
     const bounds = fakePi();
     await boundsExtension(bounds as never);
     assert.ok((bounds.handlers.get("message_end") ?? []).length > 0);

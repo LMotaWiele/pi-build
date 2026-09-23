@@ -14,7 +14,9 @@
   ],
   "packages": [
     "git:github.com/nicobailon/pi-web-access@v0.30.0",
-    "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72"
+    "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72",
+    "npm:pi-context-usage",
+    "npm:pi-smart-router@0.8.0"
   ],
   "webAccess": {
     "workflow": "none",
@@ -73,12 +75,7 @@
     "maxTurnCostUsd": 12
   },
   "routing": {
-    "enabled": true,
-    "decisionEndpoint": "https://openrouter.ai/api/alpha/decisions",
-    "decisionModel": "typesafe/jev-1.13",
-    "decisionApiKeyEnv": "OPENROUTER_API_KEY",
-    "stateBudgetTokens": 4000,
-    "defaultOnUncertain": "escalate",
+    "enabled": false,
     "tiers": {
       "scout": "provider/model-id",
       "work": "provider/model-id",
