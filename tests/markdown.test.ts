@@ -190,6 +190,7 @@ test("session recap predicate, explain gate, known.md, tier map", () => {
   assert.equal(known, "alpha\nbeta\n");
   assert.deepEqual(knownEntriesFromExplanation("known: Map\nknown: Map\n"), ["Map", "Map"]);
   assert.equal(selectTier({ single_file_edit: true, needs_repo_reasoning: false, unfamiliar_stack: false, spec_exists: true, reversible: true }), "work");
+  assert.equal(selectTier({ single_file_edit: false, needs_repo_reasoning: false, unfamiliar_stack: false, spec_exists: true, reversible: true }), "work");
   assert.equal(selectTier({ single_file_edit: true, needs_repo_reasoning: true, unfamiliar_stack: false, spec_exists: true, reversible: true }), "escalate");
   assert.equal(selectTier({ single_file_edit: false, needs_repo_reasoning: false, unfamiliar_stack: false, spec_exists: false, reversible: false }), "escalate");
   const text = extractAssistantText('{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"One. Two."}]}}\n');

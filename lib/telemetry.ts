@@ -1061,10 +1061,10 @@ export interface TierAnswers {
   reversible: boolean;
 }
 
-/** Permissive map. Escalate on doubt. Scout is not selected here. */
+/** A spec that can be undone is work, including a multi-file spec. Repo reasoning still escalates. */
 export function selectTier(answers: TierAnswers): "work" | "escalate" {
   if (answers.needs_repo_reasoning || answers.unfamiliar_stack) return "escalate";
-  if (answers.single_file_edit && answers.spec_exists && answers.reversible) return "work";
+  if (answers.spec_exists && answers.reversible) return "work";
   return "escalate";
 }
 

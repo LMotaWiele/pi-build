@@ -8,16 +8,18 @@ Copy tests, re-run after the turn: 47 passed, 0 failed, 1 skipped. Stage 0's cop
 
 Stage 3 made no model call. The index injection on the baseline index was 650 tokens. After the cap to Active next and Do not, the same ten queue rows are 614 tokens.
 
-| Metric | Stage 0 | Stage 1 | Stage 2 | Against stage 0 | Against previous |
+Stage 4 kept the loosened `selectTier`. The decision still chose escalate and `gpt-5.6-sol`, so the lower cost is this turn's smaller context, not a move to Terra. The turn finished in 40 rounds with no bound fired. Copy tests, re-run after the turn: 49 passed, 0 failed, 1 skipped. No inference row has a null tier. Invalidation points stayed at 3. Peak context is 163,680, still with 0 compactions.
+
+| Metric | Stage 0 | Stage 2 | Stage 4 | Stage 4 against stage 0 | Stage 4 against stage 2 |
 |---|---|---|---|---|---|
-| Rounds, completed, bound | 60, no, max loop depth 60 | no model call | 49, yes, none | finished inside the backstop | same, stage 1 had no call |
-| Prompt tokens | 9,271,183 | | 7,543,847 | −1,727,336 | same |
-| Cached tokens | 9,070,336 | | 7,328,768 | −1,741,568 | same |
-| Cache read share | 0.9783 | | 0.9715 | −0.0068 | same |
-| Provider cost | $5.077842 | | $4.232003 | −$0.845839 | same |
-| Cost per round | $0.084631 | | $0.086367 | +$0.001736 | same |
-| Prompt tokens per round | 154,520 | | 153,955 | −565 | same |
-| Peak context, compactions | 200,730, 0 | | 200,990, 0 | +260, still 0 | same |
-| Invalidation points per turn | not traced | | 3 | first measured figure | same |
-| Tests passed / failed / skipped | 49 / 0 / 1 | | 47 / 0 / 1 | failures unchanged at 0 | same |
-| Tool errors, longest run | 7, 2 | | 3, 1 | fewer errors | same |
+| Rounds, completed, bound | 60, no, max loop depth 60 | 49, yes, none | 40, yes, none | finished inside the backstop | 9 fewer rounds, still finished |
+| Prompt tokens | 9,271,183 | 7,543,847 | 4,322,116 | −4,949,067 | −3,221,731 |
+| Cached tokens | 9,070,336 | 7,328,768 | 4,154,880 | −4,915,456 | −3,173,888 |
+| Cache read share | 0.9783 | 0.9715 | 0.9613 | −0.0170 | −0.0102 |
+| Provider cost | $5.077842 | $4.232003 | $2.726336 | −$2.351506 | −$1.505667 |
+| Cost per round | $0.084631 | $0.086367 | $0.068158 | −$0.016473 | −$0.018209 |
+| Prompt tokens per round | 154,520 | 153,955 | 108,053 | −46,467 | −45,902 |
+| Peak context, compactions | 200,730, 0 | 200,990, 0 | 163,680, 0 | −37,050, still 0 | −37,310, still 0 |
+| Invalidation points per turn | not traced | 3 | 3 | first measured figure was 3 | +0 |
+| Tests passed / failed / skipped | 49 / 0 / 1 | 47 / 0 / 1 | 49 / 0 / 1 | failures unchanged at 0 | failures unchanged at 0 |
+| Tool errors, longest run | 7, 2 | 3, 1 | 2, 1 | fewer errors | one fewer error |
