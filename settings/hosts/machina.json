@@ -18,7 +18,8 @@
   ],
   "packages": [
     "git:github.com/nicobailon/pi-web-access@v0.30.0",
-    "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72"
+    "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72",
+    "npm:pi-context-usage"
   ],
   "webAccess": {
     "workflow": "none",
