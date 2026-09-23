@@ -62,6 +62,32 @@ fi
 # pi 0.87.0 rejects a bare `pi install` (Missing install source).
 pi install git:github.com/nicobailon/pi-web-access@v0.30.0
 pi install git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72
+pi install npm:pi-context-usage
+pi install npm:pi-smart-router@0.8.0
+
+# One patch file per package. A second file for the same package is a stop.
+shopt -s nullglob
+declare -A patch_seen=()
+for patch in "$REPO"/patches/*.patch; do
+  base="$(basename "$patch" .patch)"
+  if [ -n "${patch_seen[$base]:-}" ]; then
+    echo "second patch for $base" >&2
+    exit 1
+  fi
+  patch_seen[$base]=1
+  grep -q 'Seam:' "$patch" || { echo "patch $base does not name a seam" >&2; exit 1; }
+  dest="$HOME/.pi/agent/npm/node_modules/$base"
+  [ -d "$dest" ] || { echo "patch $base: $dest is not installed" >&2; exit 1; }
+  if patch -p1 --forward --dry-run -d "$dest" < "$patch" >/dev/null 2>&1; then
+    patch -p1 --forward -d "$dest" < "$patch"
+    echo "→ applied $base"
+  elif patch -p1 --reverse --dry-run -d "$dest" < "$patch" >/dev/null 2>&1; then
+    echo "→ patch $base already applied"
+  else
+    echo "patch $base did not apply" >&2
+    exit 1
+  fi
+done
 
 echo "→ doctor.sh fails closed until every name in secrets.example.env is exported"
 "$REPO/doctor.sh"

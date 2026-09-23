@@ -89,6 +89,21 @@ fi
 node --experimental-strip-types "$REPO/lib/scaffold.ts" --validate "$REPO" || fail "memory structure"
 ok "memory structure"
 
+shopt -s nullglob
+patch_files=("$REPO"/patches/*.patch)
+declare -A patch_seen=()
+for patch in "${patch_files[@]}"; do
+  base="$(basename "$patch" .patch)"
+  if [ -n "${patch_seen[$base]:-}" ]; then
+    fail "second patch for $base"
+  fi
+  patch_seen[$base]=1
+  grep -q 'Seam:' "$patch" || fail "patch $base does not name a seam"
+done
+ok "patches (${#patch_files[@]})"
+
+node --experimental-strip-types "$REPO/lib/hook-budget.ts" || fail "hook trace exceeds the invalidation maximum"
+
 (cd "$REPO" && node --experimental-strip-types --test tests/*.test.ts) || fail "unit tests"
 ok "unit tests"
 

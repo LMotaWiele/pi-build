@@ -44,7 +44,7 @@ The directory name does not matter. Clone it wherever you keep source.
 2. Picks `settings/hosts/<hostname>.json`. If that file is missing, it falls back to `settings/hosts/machina.json` and says so. That file is the author's model list. Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` and put your own provider ids there before you rely on the fallback. `PI_HOST=machina ./install.sh` forces the author's host file.
 3. Symlinks that host file to `~/.pi/agent/settings.json`, and symlinks `agent/AGENTS.md`, `agent/models.json`, `settings/web-search.json`, `extensions/`, `skills/`, and `lib/` into `~/.pi/agent/`. Pi loads `~/.pi/agent/extensions` and `~/.pi/agent/skills` on its own, which is why the host file does not contain a machine path. `lib/` is linked too, because the extensions import `../lib` and Pi resolves that path from the symlink. If one of those destinations already exists as a real file or directory, the script stops and tells you to move it aside.
 4. Creates `~/.config/pi/env` (mode 600) from `secrets.example.env` when the file is missing. Pi does not load this file. Export it yourself (see below).
-5. Runs `pi install` for the two pinned git packages, then `./doctor.sh`.
+5. Runs `pi install` for the two pinned git packages, `npm:pi-context-usage`, and `npm:pi-smart-router@0.8.0`, applies `patches/*.patch`, then `./doctor.sh`.
 
 `secrets.example.env` lists no required names. Chat models on the author's host use `/login`. `./doctor.sh --offline` validates the checkout without a provider call.
 
