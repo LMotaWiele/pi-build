@@ -18,6 +18,8 @@ Provider cost per round is under half of stage 0. Sections 5 and 6 stay uninstal
 
 Stage 8 made no model call. `agent/EXTENSIONS.md` names one owner per section key. The offline replay of one `before_agent_start` records 2 invalidation points, under the maximum of 3. Provider cost per round stays $0.001489 and cache read share stays 0.9535.
 
+Section 9 did not run. Peak context on the stage 4b turn was 61,890 with 0 compactions, under 255,616 and under the router's 183,616 line. The bash escape stays on index row 42. Cache warming stays off. It is a working-day measurement, and this run did not include one.
+
 | Metric | Stage 0 | Stage 2 | Stage 4 | Stage 4b | Stage 4b against stage 0 | Stage 4b against stage 4 |
 |---|---|---|---|---|---|---|
 | Rounds, completed, bound | 60, no, max loop depth 60 | 49, yes, none | 40, yes, none | 46, yes, none | finished inside the backstop | 6 more rounds, still finished |
