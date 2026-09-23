@@ -5,7 +5,8 @@ Documents for this project live in this repository.
 | What | Where |
 |---|---|
 | Specs | `docs/design/` |
-| Measurement spec, also at the repo root | `SPEC-delegation-ab.md` is the same text as `docs/design/SPEC-delegation-ab.md` |
+| Measurement spec, also at the repo root | `SPEC-delegation-ab.md` is the same text as `docs/design/SPEC-delegation-ab.md`. §4–§6 are withdrawn. |
+| Context spec, at the repo root | `SPEC-context-500k.md` supersedes that measurement. The same text is `docs/design/SPEC-context-500k.md`. |
 | Trial writeup | `.agent/explain/` |
 | Notes and the queue | `.agent/notes/INDEX.md` |
 

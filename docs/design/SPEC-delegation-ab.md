@@ -328,6 +328,8 @@ Cost of all of §3.6: roughly 10–15 pi calls and under $0.30, against ~$3 and 
 
 ---
 
+> **Withdrawn 2026-09-22.** §4, §5, and §6 are withdrawn. `SPEC-context-500k.md` supersedes them. The text below stays as the record of the measurement. It is not an instruction. §7 and §8 recorded that measurement and do not start another six.
+
 ## 4. The measurement
 
 ### 4.0 Runnability, asserted before any trial
