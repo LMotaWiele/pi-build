@@ -70,3 +70,31 @@ Five tasks stopped at the $3 cap. Their grades are from the interrupted process:
 `690b685` passed on Luna and loud-failed on Sol. The process exited 1 and did not hit the cap. `a0043ca` and `4704b4f` passed on both. Solve sets are not nested. The cascade has to allow a Sol failure to fall back to Luna, and that cascade is revisited before section 8 is built.
 
 Sol passed `aoh-5cbfb21` and `aoh-fb5d493`, both silent fails on Luna. `aoh-fb5d493` exited 1 and both grades passed. `aoh-c40f118` again failed collection with `ImportError: cannot import name 'allocate_run_dir'`. `aoh-5cbfb21` held out 39 pass, 0 fail.
+
+## Section 4 — handoff
+
+The checklist comparison was fixed before any checklist call: `ab12c94`, `a0043ca`, `a2c7c72`, `59c9121`, `aoh-6ba7e7e`. Sol listed 42 requirements across those five. Luna omitted 0. That is not more than one in five, so Luna writes the checklist. On `a0043ca` the check labels differed — Luna said no check exists where Sol said new test — and the obligations still matched.
+
+The deterministic half is `scripts/handoff.mjs`. Every delivered handoff was under the 4,000-token state budget. The longest, `s13-hard`, was 6,279 characters.
+
+Section 4.3 reran Luna's loud fail and twelve silent fails with that handoff prepended. Model pin `openai-codex/gpt-5.6-luna`. No router. The four section 2 passes were not rerun. Provider cost $0.31833496. Parent cost $0.26834988. 250 parent rounds. Zero passes, twelve silent fails, one loud fail, zero odd. Every counted inference was `gpt-5.6-luna`. No task hit the $0.50 cap or the 40-minute wall. Every process exit code is 0.
+
+Held-out files were overlaid only after `pi_exit`. No restore line says `same=true`. Grade hashes match the commit blobs. Restore logs are under `/tmp/routing-s4/luna-handoff/<id>/restore.log`.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads |
+|---|---|---|---|---|---|---|---|---|
+| ab12c94 | Silent fail | 30 pass, 0 fail | 0 pass, 2 fail | 0.01881168 | 0.01881168 | 17 | 103.967 | 5 |
+| bd51f93 | Silent fail | 32 pass, 0 fail | 5 pass, 6 fail | 0.02961980 | 0.02253788 | 19 | 116.117 | 9 |
+| 78ce7cb | Silent fail | 39 pass, 0 fail | 1 pass, 3 fail | 0.03069516 | 0.02427000 | 18 | 122.384 | 1 |
+| 4384c58 | Silent fail | 42 pass, 0 fail | 0 pass, 1 fail | 0.01968300 | 0.01968300 | 14 | 81.922 | 3 |
+| 59c9121 | Silent fail | 47 pass, 0 fail | 2 pass, 1 fail | 0.03200188 | 0.02556104 | 22 | 170.884 | 2 |
+| a2c7c72 | Silent fail | 47 pass, 0 fail | 1 pass, 2 fail | 0.03178764 | 0.02775476 | 26 | 190.580 | 3 |
+| 49d5a83 | Silent fail | 50 pass, 0 fail | 0 pass, 2 fail | 0.01635624 | 0.01635624 | 19 | 107.928 | 6 |
+| s6-benchmark | Loud fail | 23 pass, 1 fail | 12 pass, 2 fail | 0.02135508 | 0.02135508 | 24 | 129.997 | 4 |
+| s13-hard | Silent fail | 29 pass, 0 fail | 7 pass, 4 fail | 0.04902264 | 0.02759952 | 25 | 351.375 | 0 |
+| aoh-6ba7e7e | Silent fail | 143 pass, 0 fail | 44 pass, 5 fail | 0.01161752 | 0.01161752 | 11 | 93.100 | 2 |
+| aoh-5cbfb21 | Silent fail | 103 pass, 0 fail | 31 pass, 8 fail | 0.01661368 | 0.01661368 | 17 | 114.533 | 6 |
+| aoh-fb5d493 | Silent fail | 114 pass, 0 fail | 53 pass, 1 fail | 0.01557916 | 0.01557916 | 17 | 97.572 | 5 |
+| aoh-c40f118 | Silent fail | 211 pass, 0 fail | 0 pass, 0 fail, exit 2 | 0.02519148 | 0.02061032 | 21 | 154.784 | 7 |
+
+No failure became a pass. `a2c7c72` moved from loud to silent: visible is now 47 pass and 0 fail, and held-out is still 1 pass and 2 fail. `s6-benchmark` moved from silent to loud: visible is 23 pass and 1 fail. `aoh-5cbfb21` held out 31 pass and 8 fail instead of hanging with no summary, and it still fails. `aoh-c40f118` collection again exited 2. The handoff adds little on this workload. Routing and architect/editor carry it. Section 5 is next.
