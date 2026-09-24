@@ -4,8 +4,9 @@ Documents for this project live in this repository.
 
 | What | Where |
 |---|---|
-| Specs | `docs/design/`, plus the live harness spec at `docs/SPEC-harness-setup.md` |
-| Harness setup spec | `docs/SPEC-harness-setup.md`. Supersedes the context spec. |
+| Specs | `docs/design/`, the harness spec at `docs/SPEC-harness-setup.md`, and the routing spec at `docs/SPEC-routing-orchestration.md` |
+| Routing and orchestration | `docs/SPEC-routing-orchestration.md`. Open. |
+| Harness setup spec | `docs/SPEC-harness-setup.md`. Closed 2026-09-24. Stage 4b stands for the §6 benchmark. Supersedes the context spec. |
 | Measurement spec | `docs/design/SPEC-delegation-ab.md`. §1–§3 are committed. §4–§6 are withdrawn. |
 | Context spec | `docs/design/SPEC-context-500k.md`. Superseded by the harness setup spec. Kept for history. Not executed. |
 | Trial writeup | `.agent/explain/` |
