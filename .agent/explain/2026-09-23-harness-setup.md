@@ -33,3 +33,37 @@ Section 9 did not run. Peak context on the stage 4b turn was 61,890 with 0 compa
 | Invalidation points per turn | not traced | 3 | 3 | 2 | first measured figure was 3 | −1 |
 | Tests passed / failed / skipped | 49 / 0 / 1 | 47 / 0 / 1 | 49 / 0 / 1 | 47 / 1 / 0 | the failure is the missing delegation databases | requested-section tests passed |
 | Tool errors, longest run | 7, 2 | 3, 1 | 2, 1 | 5, 2 | fewer errors, same longest run | three more errors |
+
+## Section 13
+
+The held-out grader is `tests/holdout/sections-6.test.ts`, written once against the stage 2 reconstruction and committed at `8ed1f71`. Each replay starts from `f44a938`. Restoring all of HEAD `tests/` onto that tree would import modules the copy does not have, so the frozen tree is the `f44a938` suite, with HEAD's skipping `tests/score-ab.test.ts` and the held-out file copied in. That snapshot is restored again before the held-out file runs. The replay's own edits under `tests/` are the diff, and they are not graded.
+
+The Luna arm is `pi-smart-router` as adopted, launched with `--model smart-router/auto`. The Sol arm is pinned with `--model openai-codex/gpt-5.6-sol --thinking high`. On that pin the tier column is the string `unassigned`. The null-tier count on every parent session is 0. Every run exited 0, fired no bound, compacted 0 times, and recorded 2 parent invalidation points.
+
+| Metric | Luna 1 | Luna 2 | Luna 3 | Sol 1 | Sol 2 | Sol 3 |
+|---|---|---|---|---|---|---|
+| Rounds, completed, bound | 36, yes, none | 40, yes, none | 25, yes, none | 44, yes, none | 35, yes, none | 30, yes, none |
+| Model, tier | gpt-5.6-luna, economical-cloud | gpt-5.6-luna, economical-cloud | gpt-5.6-luna, economical-cloud | gpt-5.6-sol, unassigned | gpt-5.6-sol, unassigned | gpt-5.6-sol, unassigned |
+| Prompt tokens | 1,257,947 | 1,363,794 | 988,353 | 4,252,013 | 3,163,832 | 2,597,036 |
+| Cached tokens | 1,187,328 | 1,284,608 | 906,752 | 4,098,560 | 3,027,840 | 2,468,096 |
+| Cache read share | 0.9439 | 0.9419 | 0.9174 | 0.9639 | 0.9570 | 0.9504 |
+| Provider cost | $0.044332 | $0.050199 | $0.041583 | $2.657196 | $2.091964 | $1.795638 |
+| Cost per round | $0.001231 | $0.001255 | $0.001663 | $0.060391 | $0.059770 | $0.059855 |
+| Prompt tokens per round | 34,943 | 34,095 | 39,534 | 96,637 | 90,395 | 86,568 |
+| Peak context, compactions | 51,329, 0 | 55,009, 0 | 58,290, 0 | 137,909, 0 | 130,990, 0 | 124,789, 0 |
+| Invalidation points | 2 | 2 | 2 | 2 | 2 | 2 |
+| Held-out passed / failed / skipped | 3 / 0 / 0 | 3 / 0 / 0 | 3 / 0 / 0 | 3 / 0 / 0 | 3 / 0 / 0 | 3 / 0 / 0 |
+| Lines added / removed under tests/ | 3 / 2 | 3 / 2 | 7 / 2 | 72 / 22 | 51 / 13 | 42 / 8 |
+| Files read before the first edit | 9 | 8 | 8 | 17 | 19 | 21 |
+| Source diff against stage 2, files, added, removed | 5, 64, 83 | 5, 61, 83 | 5, 61, 88 | 5, 135, 133 | 6, 38, 49 | 6, 27, 37 |
+| Tool errors, longest run | 2, 1 | 1, 1 | 2, 1 | 2, 1 | 2, 1 | 2, 1 |
+
+Mean provider cost per round is $0.001383 on Luna, from $0.001231 to $0.001663, and $0.060005 on Sol, from $0.059770 to $0.060391. The Sol mean is 43.4 times the Luna mean. Per run the ratios are 49.0, 47.6, and 36.0. Mean cache read share is 0.9344 on Luna and 0.9571 on Sol. Three Luna runs cost $0.136115. Three Sol runs cost $6.544798.
+
+Luna passed the held-out suite on all three runs and matched Sol's pass count, so stage 4b stands for this benchmark. The same review shows what the three assertions leave out. Luna's default `maxTurnPromptTokens` was 100,000, 250,000, and 400,000, and the host files omit the keys. Sol wrote 20,000,000 and $12, then 5,000,000 and $5, into the host files. The stage 2 reconstruction uses 10,000,000 and $5 with those keys present. The held-out check requires the defaults to be positive and a supplied config to fire before loop depth. Luna read 9, 8, and 8 files before the first edit. Sol read 17, 19, and 21. The source diff against the stage 2 reconstruction is 147, 144, and 149 lines on Luna and 268, 87, and 64 lines on Sol. Luna's diff is smaller on the first Sol run and larger on the other two.
+
+The prompt told each replay to update the tests that cover the three sections. Every tests diff is in those files. `tests/holdout/sections-6.test.ts` is unchanged in all six. Index row 48 names the files and the line counts.
+
+The hard spec asked for harness sections 1 and 2 on a fresh `f44a938` copy, launched with `--model smart-router/auto`. All 46 parent calls are `economical-cloud` on `gpt-5.6-luna`. Provider cost is $0.074132, $0.001612 per round, cache read share 0.9491, peak context 62,409, 0 compactions. `hook_touches`, `scripts/report-hooks.sql`, `extensions/bounds.ts`, and defaults of 20,000,000 tokens and $12 are present. Memory-gate skips `pi_build_memory` when the recap extension is enabled, and recap writes that key. The prompt also required a test that loads both extensions in each order, and a test that bounds keep running when routing is disabled. The tree has neither. `tests/routing-checkpoint.test.ts` only moves its import to `bounds.ts`. `runBoundAbort` checkpoints and aborts. The retry send lives inside the extension and has no test. `boundReason` reads the process-global turn usage, and the existing backstop test never sets that usage.
+
+Stage 4b stands for the section 6 benchmark. A prompt that adds a file under `extensions/`, or that names two or more harness stages, is pinned to `openai-codex/gpt-5.6-sol` at launch. The router package has no file-count knob. It already carries one patch, and this run leaves the package as it is. Sections 5 and 6 stay unrun.

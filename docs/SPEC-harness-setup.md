@@ -2,7 +2,7 @@
 
 **Place at `docs/SPEC-harness-setup.md`.**
 
-**Status:** open
+**Status:** closed 2026-09-24. Stage 4b stands for the §6 benchmark. A prompt that adds a file under `extensions/`, or that names two or more harness stages, is pinned to Sol at launch. The measurement is `.agent/explain/2026-09-23-harness-setup.md`.
 **Executor:** Grok Build
 **Written:** 2026-09-23
 **Supersedes:** `SPEC-context-500k.md` and `SPEC-extension-coordination.md`. Both are kept for their history and are not executed. `SPEC-delegation-ab.md` §1–§3 remain committed; its §4–§6 stay withdrawn.

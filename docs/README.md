@@ -30,3 +30,10 @@ Trial databases and runner logs under `/tmp` are local measurement output. They 
 | Stage 2 harness bounds, 2026-09-23 | `/tmp/pi-build-harness-s2/telemetry.db` |
 | Stage 4 loosened selectTier, 2026-09-23 | `/tmp/pi-build-harness-s4/telemetry.db` |
 | Stage 4b pi-smart-router, 2026-09-23 | `/tmp/pi-build-harness-s4b/telemetry.db` |
+| Section 13 Luna run 1, 2026-09-24 | `/tmp/pi-build-s13/luna-1/telemetry.db` |
+| Section 13 Luna run 2, 2026-09-24 | `/tmp/pi-build-s13/luna-2/telemetry.db` |
+| Section 13 Luna run 3, 2026-09-24 | `/tmp/pi-build-s13/luna-3/telemetry.db` |
+| Section 13 Sol run 1, 2026-09-24 | `/tmp/pi-build-s13/sol-1/telemetry.db` |
+| Section 13 Sol run 2, 2026-09-24 | `/tmp/pi-build-s13/sol-2/telemetry.db` |
+| Section 13 Sol run 3, 2026-09-24 | `/tmp/pi-build-s13/sol-3/telemetry.db` |
+| Section 13 hard spec, 2026-09-24 | `/tmp/pi-build-s13/hard-1/telemetry.db` |
