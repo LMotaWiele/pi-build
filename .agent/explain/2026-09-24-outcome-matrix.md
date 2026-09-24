@@ -98,3 +98,26 @@ Held-out files were overlaid only after `pi_exit`. No restore line says `same=tr
 | aoh-c40f118 | Silent fail | 211 pass, 0 fail | 0 pass, 0 fail, exit 2 | 0.02519148 | 0.02061032 | 21 | 154.784 | 7 |
 
 No failure became a pass. `a2c7c72` moved from loud to silent: visible is now 47 pass and 0 fail, and held-out is still 1 pass and 2 fail. `s6-benchmark` moved from silent to loud: visible is 23 pass and 1 fail. `aoh-5cbfb21` held out 31 pass and 8 fail instead of hanging with no summary, and it still fails. `aoh-c40f118` collection again exited 2. The handoff adds little on this workload. Routing and architect/editor carry it. Section 5 is next.
+
+## Section 5 — Jev battery
+
+`extensions/jev/adapter.ts` and `extensions/jev/state-builder.ts` are restored from `9e26310ebdcd54ffb8e9e1c3c65deea616677065`. `extensions/jev/questions.ts` is a new thirteen-question battery. It is not the deleted question module. On a failed decision the defaults keep the route off Luna solo. Each call saw the handoff, the Luna checklist, and the task prompt. None of the sixteen states needed a trim. `s13-hard` was not sent. It is the last large prompt, and its handoff plus checklist plus prompt is the one state that crowds the 4,000-token budget.
+
+Deterministic labels for S1, S2, B1, B2, and R1 were written at 2026-09-24T17:41:43Z, before any decision call. S1 is scored only when the reference diff and the named-missing list agree about a new file under `extensions/`, `lib/`, or `settings/`. S2 is yes only when the prompt names two or more numbered sections or stages. B1 is yes when a fan-in row has an outside count above zero. B2 is yes when the shared list is non-empty. R1 is yes when the prompt does not instruct an install, a fetch, or a publish.
+
+The cost probe used `ab12c94`, one state. Five questions (S1, S2, B1, B2, R1): 723 ms, 807 input tokens, 89 output tokens, cost 0.000033894. Thirteen questions: 263 ms, 1342 input tokens, 225 output tokens, cost 0.000056364. The full battery cost 1.66 times the five-question call. Every latency in the run was under 3000 ms. The adapter's default timeout would not have replaced these answers. Seventeen calls, one five-question probe and sixteen full batteries, cost 0.001018.
+
+Three S1 items were left unscored. The diff adds a file the handoff does not name: `bd51f93` adds `lib/settings-keys.ts`, `4384c58` adds `lib/score-ab.ts`, and `49d5a83` adds `lib/hook-budget.ts`.
+
+| Question | Correct | Scored |
+|---|---|---|
+| S1 | 13 | 13 |
+| S2 | 4 | 16 |
+| B1 | 16 | 16 |
+| B2 | 16 | 16 |
+| R1 | 15 | 16 |
+| All | 64 | 77 |
+
+64 of 77 is 83%. That is under 90%. Section 5 stops here. The classifier is not reliable on these inputs, and the rest of this section would measure noise.
+
+S2 is the gap. None of the sixteen prompts name two numbered sections. Twelve answers were yes: `ab12c94`, `bd51f93`, `78ce7cb`, `59c9121`, `a2c7c72`, `9e26310`, `690b685`, `49d5a83`, `s6-benchmark`, `aoh-5cbfb21`, `aoh-fb5d493`, `aoh-c40f118`. The four nos were `a0043ca` at 0.48, `4384c58` at 0.48, `4704b4f` at 0.49, and `aoh-6ba7e7e` at 0.36. The yes answers ran from 0.55 to 0.97. `49d5a83` names two section keys and scored 0.97. The frozen rule counts numbered sections only, so that label stayed no. Counting that single item as yes would be 65 of 77, still under 90%. R1 missed only `690b685`, at 0.40 against a yes label.
