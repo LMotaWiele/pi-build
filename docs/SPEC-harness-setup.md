@@ -239,3 +239,51 @@ Any of the first three may be dropped later **on measured cost against measured 
 | Any stage raises invalidation points by more than 1 | Revert regardless of token savings. |
 | An adopted extension needs a patch | Write it under `patches/`, name the seam, continue. Stop and report at a second patch to the same extension. |
 | The whole run finishes with provider cost per round under half of stage 0's and tests unchanged | Stop adding extensions. The remaining candidates are chasing a smaller share of a smaller number. |
+
+---
+
+## 13. Validate stage 4b before relying on it — added 2026-09-23
+
+Stage 4b adopted `pi-smart-router`, which routed every parent call to Luna and cut provider cost per round from $0.084631 to $0.001489. The saving decomposes as ~20x on price (Luna 0.20 / 0.02 / 1.20 against Sol's 4 / 0.40 / 20) and ~3.5x on context per round (44,661 against 154,520). The quality check that was meant to validate it cannot, for two reasons:
+
+- **Replays edit the tests that grade them.** Stage 2 lost two passing tests with no failures; stage 4 turned a failing assertion into a skip; stage 4b's requested-section tests were written in the same replay as the code they test.
+- **Every stage is one run.** Stages 2 and 4 used the same model and tier and differ by 36% in cost. That is the noise floor.
+
+The §12 stopping rule and the §4.3 deletion both fired on this result. Neither is reverted by this section; this section decides whether they stand.
+
+### 13.1 Fix the environment-dependent test, once, in the real repo
+
+The `f44a938` assertion that the delegation databases exist fails on any machine without those files, and replays have been skipping or editing it. Make it skip explicitly when the files are absent, commit it, and never let a replay touch it again.
+
+### 13.2 Freeze a held-out suite
+
+Write tests for §6.1, §6.2 and §6.3 **once**, against the stage 2 output (Sol, completed, 47 / 0 / 1). Commit them under `tests/holdout/`. Before every replay, restore `tests/` from that commit; after every replay, restore it again before running the suite. A replay's own edits to `tests/` are recorded as a diff and never graded.
+
+Report two numbers per run: the held-out result, and the lines the replay changed under `tests/`. A replay that edits tests to pass has told you something, even when it also passes.
+
+### 13.3 Three runs per arm
+
+At Luna's price, three runs cost about $0.21.
+
+| Arm | Runs | Router | Parent model |
+|---|---|---|---|
+| Luna | 3 | `pi-smart-router` as adopted | whatever it chooses |
+| Sol | 3 | `pi-smart-router` with Luna forbidden, or pinned to Sol | Sol |
+
+Same benchmark, same starting tree, held-out suite for both.
+
+Also record per run: files read before the first edit, and the size of the diff against the stage 2 output. If Luna reads markedly fewer files and produces a smaller diff, the context drop is Luna doing less of the job, not the router trimming context.
+
+### 13.4 One hard task
+
+The benchmark is one spec, and `pi-smart-router` classified it as `economical-cloud`. Run one real spec of the 500k kind that previously needed Grok Build. Record which tier the router chooses and whether it escalates on its own. If it keeps a hard spec on Luna and the held-out suite or your own review finds it incomplete, the router's classifier is the weak point, not the tier.
+
+### 13.5 Verdict
+
+| If | Then |
+|---|---|
+| Luna passes the held-out suite in all 3 runs, and matches Sol's pass count | Stage 4b stands. Record the cost ratio with its spread across runs. |
+| Luna passes but reads substantially less and produces a smaller diff | Review the diffs by hand before accepting. Passing a held-out suite written against Sol's output is necessary, not sufficient. |
+| Luna fails held-out tests that Sol passes | The router is routing too low for this work. Set a floor — `economical-cloud` never takes an edit turn — and re-run. |
+| The hard task stays on Luna and comes back incomplete | Stage 4b stands for routine work only. Add a rule that escalates specs over a size or file-count threshold. |
+| Any replay edits `tests/` | Record it in INDEX by run. A model that edits its grader is not ready to run unattended, whatever the cost. |
