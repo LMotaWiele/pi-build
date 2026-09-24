@@ -36,4 +36,37 @@ The loud fail is `a2c7c72`.
 
 ## Sol selection
 
-Sol runs on the thirteen failures and on three of the four passes: `a0043ca`, `4704b4f`, `690b685`. The pass held out of that draw is `9e26310`.
+Sol ran on the thirteen Luna failures and on three of the four Luna passes: `a0043ca`, `4704b4f`, `690b685`. The pass held out of that draw is `9e26310`.
+
+## Section 3 — Sol
+
+Model pin `openai-codex/gpt-5.6-sol`, thinking high. Sixteen tasks. Provider cost $29.28209280. Parent cost $27.36353840. Four passes, eight silent fails, four loud fails, zero odd. Every counted inference model was `gpt-5.6-sol`.
+
+Held-out files were overlaid only after `pi_exit`. Restore logs are under `/tmp/routing-s3/runs/<id>/restore.log`. Grade hashes match the commit blobs.
+
+One earlier attempt on `s6-benchmark` and `s13-hard` was discarded. Sol executed a test that inserted a fixture inference row, session `s` and model `m`, and the pin checker treated that row as a model switch and killed both processes. Those two rows below are the rerun. The checker now ignores fixture rows.
+
+Five tasks stopped at the $3 cap. Their grades are from the interrupted process: `bd51f93`, `59c9121`, `a2c7c72`, `s6-benchmark`, `s13-hard`.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| ab12c94 | Silent fail | 30 pass, 0 fail | 0 pass, 2 fail | 1.58619600 | 1.49801040 | 28 | 303.982 | 11 | |
+| bd51f93 | Silent fail | 32 pass, 0 fail | 5 pass, 6 fail | 3.13632240 | 3.03534400 | 37 | 532.105 | 22 | cost-cap |
+| a0043ca | Pass | 38 pass, 0 fail | 4 pass, 0 fail | 0.68046240 | 0.59418320 | 21 | 239.776 | 6 | |
+| 78ce7cb | Silent fail | 39 pass, 0 fail | 1 pass, 3 fail | 0.73873600 | 0.73873600 | 16 | 234.829 | 10 | |
+| 4384c58 | Silent fail | 42 pass, 0 fail | 0 pass, 1 fail | 1.31876000 | 1.31876000 | 23 | 240.753 | 18 | |
+| 59c9121 | Silent fail | 47 pass, 0 fail | 2 pass, 1 fail | 3.02328080 | 2.82133920 | 41 | 576.850 | 17 | cost-cap |
+| a2c7c72 | Loud fail | 41 pass, 1 fail | 4 pass, 2 fail | 3.06899360 | 2.79726400 | 57 | 667.525 | 19 | cost-cap |
+| 4704b4f | Pass | 42 pass, 0 fail | 12 pass, 0 fail | 0.68432240 | 0.56509680 | 23 | 219.358 | 10 | |
+| 690b685 | Loud fail | 30 pass, 1 fail | 6 pass, 2 fail | 1.72878720 | 1.69401600 | 33 | 381.207 | 33 | |
+| 49d5a83 | Silent fail | 50 pass, 0 fail | 0 pass, 2 fail | 2.28251040 | 2.16305440 | 41 | 553.932 | 25 | |
+| s6-benchmark | Loud fail | 28 pass, 1 fail | 14 pass, 2 fail | 3.07390800 | 2.89656000 | 44 | 578.165 | 25 | cost-cap |
+| s13-hard | Loud fail | 23 pass, 1 fail | 6 pass, 3 fail | 3.21510400 | 3.00325680 | 46 | 681.635 | 19 | cost-cap |
+| aoh-6ba7e7e | Silent fail | 143 pass, 0 fail | 44 pass, 5 fail | 0.81059280 | 0.52661760 | 19 | 403.573 | 7 | |
+| aoh-5cbfb21 | Pass | 103 pass, 0 fail | 39 pass, 0 fail | 1.39830480 | 1.33872480 | 31 | 394.351 | 22 | |
+| aoh-fb5d493 | Pass | 114 pass, 0 fail | 54 pass, 0 fail | 1.13412720 | 1.05228000 | 26 | 218.145 | 16 | |
+| aoh-c40f118 | Silent fail | 211 pass, 0 fail | 0 pass, 0 fail, exit 2 | 1.40168480 | 1.32029520 | 32 | 311.530 | 17 | |
+
+`690b685` passed on Luna and loud-failed on Sol. The process exited 1 and did not hit the cap. `a0043ca` and `4704b4f` passed on both. Solve sets are not nested. The cascade has to allow a Sol failure to fall back to Luna, and that cascade is revisited before section 8 is built.
+
+Sol passed `aoh-5cbfb21` and `aoh-fb5d493`, both silent fails on Luna. `aoh-fb5d493` exited 1 and both grades passed. `aoh-c40f118` again failed collection with `ImportError: cannot import name 'allocate_run_dir'`. `aoh-5cbfb21` held out 39 pass, 0 fail.
