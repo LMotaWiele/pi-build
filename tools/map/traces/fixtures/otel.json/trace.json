@@ -1,0 +1,6 @@
+{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"agent"}}]},"scopeSpans":[{"scope":{"name":"x"},"spans":[
+ {"traceId":"t1","spanId":"a","name":"turn","startTimeUnixNano":"1000000000","endTimeUnixNano":"5000000000","attributes":[{"key":"agent.turn","value":{"stringValue":"A"}}]},
+ {"traceId":"t1","spanId":"b","parentSpanId":"a","name":"chat","startTimeUnixNano":"1100000000","endTimeUnixNano":"2000000000","attributes":[{"key":"gen_ai.request.model","value":{"stringValue":"m"}},{"key":"gen_ai.usage.input_tokens","value":{"intValue":"120"}}]},
+ {"traceId":"t1","spanId":"c","parentSpanId":"a","name":"GET /x","startTimeUnixNano":"2100000000","endTimeUnixNano":"2300000000","attributes":[{"key":"http.method","value":{"stringValue":"GET"}}]},
+ {"traceId":"t1","spanId":"d","parentSpanId":"a","name":"helper","startTimeUnixNano":"2400000000"}
+]}]}]}

@@ -1,0 +1,4 @@
+{"attrs":{"agent.turn":"A"},"dur_ms":4000.0,"kind":"function","name":"turn","origin":{"extractor":"otel.json@1","provenance":"extracted","source":null},"parent":null,"span":"a","start_ms":1000.0,"trace":"t1","type":"CallEvent"}
+{"attrs":{"gen_ai.request.model":"m","gen_ai.usage.input_tokens":120},"dur_ms":900.0,"kind":"model","name":"chat","origin":{"extractor":"otel.json@1","provenance":"extracted","source":null},"parent":"a","span":"b","start_ms":1100.0,"trace":"t1","type":"CallEvent"}
+{"attrs":{"http.method":"GET"},"dur_ms":200.0,"kind":"tool","name":"GET /x","origin":{"extractor":"otel.json@1","provenance":"extracted","source":null},"parent":"a","span":"c","start_ms":2100.0,"trace":"t1","type":"CallEvent"}
+{"attrs":{},"dur_ms":null,"kind":"function","name":"helper","origin":{"extractor":"otel.json@1","provenance":"extracted","source":null},"parent":"a","span":"d","start_ms":2400.0,"trace":"t1","type":"CallEvent"}

@@ -1,0 +1,5 @@
+[[stores.file]]
+id = "no-globs"
+
+[[stores.file]]
+globs = ["x"]

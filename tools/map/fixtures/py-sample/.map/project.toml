@@ -1,0 +1,13 @@
+[[stores.sqlite]]
+id = "memory"
+path = "memory.db"
+identifiers = ["memory_path"]
+
+[[stores.file]]
+id = "notes"
+globs = ["notes.md"]
+identifiers = ["notes_path"]
+
+[[stores.file]]
+id = "snapshot"
+globs = ["state/*.json"]

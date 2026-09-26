@@ -1,0 +1,7 @@
+[[rule]]
+file = "pi-events.scm"
+language = "typescript"
+
+[[rule]]
+file = "globals.scm"
+language = "typescript"

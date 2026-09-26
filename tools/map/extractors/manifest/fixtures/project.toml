@@ -1,0 +1,8 @@
+[[stores.file]]
+id = "notes"
+globs = ["notes/*.md"]
+identifiers = ["notesDir"]
+
+[[stores.file]]
+id = "state"
+globs = ["state.json"]

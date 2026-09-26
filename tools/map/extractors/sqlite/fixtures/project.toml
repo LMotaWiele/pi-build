@@ -1,0 +1,8 @@
+[[stores.sqlite]]
+id = "library"
+path = "store.db"
+identifiers = ["libraryPath"]
+
+[[stores.sqlite]]
+id = "absent"
+path = ["$MAP_FIXTURE_UNSET_VARIABLE", "does-not-exist.db"]
