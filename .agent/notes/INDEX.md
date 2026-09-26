@@ -22,7 +22,7 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 
 | # | Item | Source | Added |
 |---|---|---|---|
-| 1 | The session map is specified in tools/map/SPEC.md. Build those two views from the fixtures. The tiered-retry plan stays unfinished, and the routing suite stays closed. | human | 2026-09-26 |
+| 1 | The tiered-retry plan gate passed. Run that plan next, and resume it if a hold stops the run. The session map views in tools/map/SPEC.md stay unbuilt, and the routing suite stays closed. | human | 2026-09-26 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.
