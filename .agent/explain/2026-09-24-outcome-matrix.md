@@ -194,3 +194,28 @@ One reworded question, one call per surviving task, labels frozen before the cal
 | aoh-5cbfb21 | no | 0.04 | yes |
 | aoh-fb5d493 | no | 0.06 | yes |
 | aoh-c40f118 | no | 0.03 | yes |
+
+## Section 12 Phase B — luna
+
+The first-pass trees were absent and the grader split changed, so this arm re-runs every surviving task, including prompts that did not change. Run trees are under `/home/george-contis/var/routing-runs/luna`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| ab12c94 | Silent fail | 1 pass, 0 fail | 0 pass, 1 fail | 0.01236792 | 0.01236792 | 15 | 68.997 | 4 |  |
+| a0043ca | Pass | 2 pass, 0 fail | 1 pass, 0 fail | 0.01564360 | 0.01564360 | 15 | 84.930 | 3 |  |
+| bd51f93 | Loud fail | 3 pass, 2 fail | 2 pass, 2 fail | 0.03026304 | 0.03026304 | 34 | 168.377 | 11 |  |
+| 78ce7cb | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.02304928 | 0.02304928 | 19 | 107.863 | 3 |  |
+| 4384c58 | Pass | 2 pass, 0 fail | 1 pass, 0 fail | 0.01254324 | 0.01254324 | 17 | 95.211 | 5 |  |
+| 4704b4f | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.01387940 | 0.01387940 | 14 | 80.162 | 4 |  |
+| 59c9121 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.01447776 | 0.01447776 | 14 | 106.109 | 5 |  |
+| a2c7c72 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.03002872 | 0.03002872 | 25 | 169.098 | 3 |  |
+| 49d5a83 | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.01297332 | 0.01297332 | 15 | 76.822 | 5 |  |
+| aoh-6ba7e7e | censored | 4 pass, 1 fail | 5 pass, 3 fail | 0.01122456 | 0.01122456 | 13 | 65.032 | 4 | pin |
+| 690b685 | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.04070804 | 0.03448144 | 28 | 196.584 | 6 |  |
+| aoh-5cbfb21 | censored | 3 pass, 3 fail | 2 pass, 3 fail | 0.01253028 | 0.01253028 | 13 | 70.042 | 4 | pin |
+| s6-benchmark | Loud fail | 2 pass, 1 fail | 2 pass, 1 fail | 0.04180552 | 0.04180552 | 37 | 198.500 | 7 |  |
+| aoh-fb5d493 | Silent fail | 5 pass, 0 fail | 3 pass, 1 fail | 0.01691036 | 0.01691036 | 21 | 113.767 | 7 |  |
+| aoh-c40f118 | Silent fail | 4 pass, 0 fail | 2 pass, 1 fail | 0.02358872 | 0.02037540 | 18 | 119.361 | 6 |  |
+| s13-hard | Loud fail | 3 pass, 1 fail | 2 pass, 2 fail | 0.02532204 | 0.02532204 | 21 | 189.414 | 0 |  |
+
+Pinned launch. Sixteen sessions, one user message each, model gpt-5.6-luna. 5 pass, 6 silent fail, 3 loud fail, 2 censored. Provider cost 0.337316, parent cost 0.327876, 319 rounds. `aoh-6ba7e7e` and `aoh-5cbfb21` are censored: after three consecutive tool failures the bounds extension retried at Sol, and the pin supervisor stopped the process. Sol's row has cost 0. The other fourteen finished on Luna only. Hidden files were hashed before the overlay.
