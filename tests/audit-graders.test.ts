@@ -14,6 +14,7 @@ import {
   resolveTs,
   signatureOf,
 } from "../scripts/audit-graders.mjs";
+import { classify } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
 
@@ -138,6 +139,16 @@ test("the repaired suite has no undeclared interface and sixteen tasks that spli
   const explain = tasks.find((task) => task.id === "4384c58");
   assert.match(explain.prompt, /^- export const explainStdio$/m);
   assert.equal(explain.prompt.includes("PI_OWNED_SETTING_KEYS"), false);
+});
+
+test("a stopped run is censored and a visible pass with a hidden fail is silent", () => {
+  const fail = { code: 1, pass: 0, fail: 1 };
+  const pass = { code: 0, pass: 2, fail: 0 };
+  assert.equal(classify(pass, pass, null), "Pass");
+  assert.equal(classify(fail, fail, null), "Loud fail");
+  assert.equal(classify(pass, fail, null), "Silent fail");
+  assert.equal(classify(fail, pass, null), "Odd");
+  assert.equal(classify(pass, fail, "cost-cap"), "censored");
 });
 
 test("a signature keeps a parameter type and a return type", () => {
