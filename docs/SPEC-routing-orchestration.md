@@ -248,6 +248,8 @@ Compare against Sol solo on the same tasks from §3: held-out result, provider c
 |---|---|
 | Always Sol | Sol solo on everything. |
 | Always Luna, cascade | Luna with handoff; on a visible-check failure, Sol. Silent fails ship. |
+| Three-step cascade | Luna; on a visible-check failure, Terra; on a second failure, Sol. Include only if the §12.6 Terra probe passed at least one task. |
+| Always Terra | Terra on everything. The middle-tier baseline. |
 | `pi-smart-router` | Its tier choice per task. Obtain it without a full run: its shadow or eval mode if one exists, otherwise a one-round launch with the decision logged. Include its first-turn pin — the route it pins is the route for the whole task. |
 | Jev battery | The §5.4 rule, choosing Luna-with-handoff, architect/editor, or Sol solo, with the cascade on top. |
 | Oracle | The cheapest arm that passed held-out, per task. The ceiling. |
@@ -376,15 +378,22 @@ The first pass cost $29.97 in pi runs, 98% of it the Sol arm, and exhausted the 
 2. §12.3 split and §12.4 restore rules.
 3. **Regrade every existing run** — Luna, Sol, and handoff — for every task whose prompt did not change in §12.2. Capped Sol runs stay censored.
 
-**Phase B — cents.**
+**Phase B — cents, plus one small Terra probe.**
 1. Luna on every task whose prompt changed.
 2. Jev on S2 only, all tasks. The other twelve answers stand.
+3. **Terra probe.** Terra has never run as a parent on this suite. Run it on the two tasks where Sol passed and Luna failed with clean grades, `aoh-5cbfb21` and `aoh-fb5d493`, after confirming both pass the §12.1 audit. Pin `openai/gpt-5.6-terra` at **medium** thinking — the host config's `low` would confound tier with thinking. Estimated $1–2.
+   - Passes both: re-run one at `low`. Record whether the cheaper setting holds. Terra becomes Phase C's first escalation target.
+   - Passes one: Terra is Phase C's first step, Sol behind it.
+   - Passes neither: Terra has no capability niche here. Phase C goes straight to Sol and Terra is dropped from §7.
 
 **Decision point.** Count tasks Luna fails after A and B.
 
 **Phase C — the only dollar spend, conditional.**
 - If Luna fails **two or fewer** tasks: skip. The existing Sol evidence on `aoh-5cbfb21` and `aoh-fb5d493` suffices. Write a Jev question targeting what the remaining failures share and go to §5.4.
-- If Luna fails **three or more**: run Sol on **at most four** of them, chosen for different failure types. Hard budget **$10** for the phase. Do not re-run `a0043ca` or `4704b4f`; they passed on both tiers and are regraded in Phase A.
+- If Luna fails **three or more**: escalate in steps, stopping each task at its first pass.
+  1. Terra, at whichever thinking level the probe settled, on **at most four** of Luna's failures, chosen for different failure types. Skip this step if the probe passed neither task.
+  2. Sol, only on those Terra fails.
+  - Hard budget **$10** for the phase across both tiers. Do not re-run `a0043ca` or `4704b4f`; they passed on both tiers and are regraded in Phase A.
 
 **Handoff (§4.3):** only on tasks Phase C finds Sol passing and Luna failing. Otherwise skip.
 
@@ -397,3 +406,55 @@ Write `scripts/run-arm.sh <arm> <task-list>` once: pin the model, run, restore h
 - Luna's requirement checklist matched Sol's on 42 of 42 requirements. §4.2's verdict stands: Luna writes the checklist.
 - Jev's cost: $0.000056 per 13-question call, under 3s. The battery can grow freely.
 - `aoh-5cbfb21` and `aoh-fb5d493` — Sol passed, Luna failed with and without handoff, clean grades. Keep them; re-verify under §12.1, but they are the suite's strongest discriminating tasks so far.
+
+---
+
+## 13. Checkers — what catches missing work in production — added 2026-09-24
+
+### 13.1 The gap
+
+The suite grades with held-out tests. Production has none. What runs in real work — post-edit typecheck, existing tests, tests the model writes, bounds, the `explain.ts` walkthrough — catches type errors, regressions, and runaway turns. None of it catches a requirement that was never implemented or never tested. The cascade's "visible-check failure" trigger therefore fires only on regressions and type errors, and silent fails ship.
+
+Routing reduces how often silent fails happen. A checker is what catches them. **If a checker turns most silent fails into loud ones, the cascade handles them nearly for free, and always-Luna-with-cascade becomes the default policy.** That makes this section at least as important as §5.
+
+### 13.2 Candidates, cheapest first
+
+| # | Checker | Input | Cost per run | Can catch | Cannot catch |
+|---|---|---|---|---|---|
+| C1 | Checklist reconciliation | Checklist, diff, test files | ~0, mostly scripted | Requirements with no code change or no test referencing them | Wrong code with a wrong test |
+| C2 | Jev coverage questions | Per requirement: its text and the relevant diff hunks | ~$0.00006 per requirement | Requirements the diff does not implement | Subtle errors inside an implemented requirement |
+| C3 | Blind tests | Checklist and declared interfaces, **not** the implementation | ~$0.02 on Luna | Behaviour the implementation gets wrong, as held-out does | Requirements missing from the checklist |
+| C4 | Sol review | Diff against checklist | ~$0.10–0.30 | Most of the above, with judgment | Whatever Sol misses |
+
+**Source of the checklist:** when the prompt names a spec, extract the spec's numbered Verify items first, then the body. Verify items are acceptance criteria written before any code, and they are the strongest input any checker here gets.
+
+### 13.3 Evaluate on the corpus you already have
+
+No new implementation runs. The corpus is every run tree from §2, §3, §4 and §12's Phase B, **restricted to tasks whose prompt did not change in §12.2** plus the Phase B reruns — an old run graded against a prompt that has since changed is not a fair test of a checker.
+
+Ground truth per run: held-out pass or fail, and after §12.3's split, which requirement's tests failed.
+
+Run each checker over each run's output. Score:
+
+| Metric | Definition |
+|---|---|
+| **Recall on silent fails** | Of runs that passed visible and failed held-out, the share the checker flagged. The priority. |
+| Requirement precision | When it flags a specific requirement, how often that requirement's held-out tests actually failed. |
+| False-alarm rate | Of runs that passed held-out, the share the checker flagged. Each false alarm costs an unnecessary escalation. |
+| Cost per run | Provider cost of the check. |
+
+Run C1 and C2 on the whole corpus first — together about two cents. Run C3 on the whole corpus if C1 and C2 leave recall under 80%. Run C4 only on the silent fails C1–C3 missed, plus an equal number of clean passes as a false-alarm control.
+
+### 13.4 Verdict
+
+| If | Then |
+|---|---|
+| Some combination of C1–C3 reaches 80% recall with false alarms under 20% | Adopt it as the cascade trigger. In §7, add a policy "always Luna, cascade on checker flag" and re-run the replay. Expect it to be the cheapest policy within reach of the oracle. |
+| Only C4 reaches 80% | Sol review is the checker. Cost it into §7's policies: every Luna run pays one review. Compare against routing more work to Terra or Sol directly. |
+| No checker reaches 50% | Missing work is not detectable cheaply on your workload. Routing carries the whole load; §5's verifiability questions become the priority, and anything Jev rates silent-fail-prone goes to Sol. |
+| C2 performs well | Jev's coverage questions are the cheapest high-volume check available. Move them into the production turn: after every edit turn, one Jev call per requirement. |
+| C3 recall is high but C3's own tests fail on correct code | The blind tests are over-specified. Constrain them to declared interfaces and observable behaviour, and re-score. |
+
+### 13.5 Order within §12
+
+This section runs after §12.6 Phase B and before Phase C. If a checker reaches the first verdict row, Phase C's Sol runs may be unnecessary — the question becomes whether the cascade with a checker recovers Luna's failures, not whether Sol passes them.
