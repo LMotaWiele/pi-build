@@ -247,14 +247,37 @@ function restoreProtected(work, commit, paths) {
   git(work, ["checkout", commit, "--", ...args]);
 }
 
+function expandTests(cwd, files) {
+  const found = [];
+  const walk = (rel) => {
+    const abs = path.resolve(cwd, rel);
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      found.push(rel);
+      return;
+    }
+    if (!stat.isDirectory()) {
+      found.push(rel);
+      return;
+    }
+    for (const name of fs.readdirSync(abs)) walk(path.join(rel, name));
+  };
+  for (const file of files) walk(file);
+  const tests = found.filter((rel) => /\.test\.(?:ts|js|mjs)$/.test(rel));
+  return tests.length ? tests : found;
+}
+
 function runNodeTest(cwd, files) {
-  if (!files.length) return { code: 0, out: "no files\n" };
+  const list = expandTests(cwd, files);
+  if (!list.length) return { code: 0, out: "no files\n" };
   let code = 0;
   let out = "";
   try {
     out = execFileSync(
       process.execPath,
-      ["--experimental-strip-types", "--test", ...files],
+      ["--experimental-strip-types", "--test", ...list],
       { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 },
     );
   } catch (err) {
