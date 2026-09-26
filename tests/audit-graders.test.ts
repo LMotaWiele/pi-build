@@ -261,6 +261,11 @@ test("a name-only interface omits the test assertion", () => {
     text: 'import { countsAsEdit } from "../lib/telemetry.ts";\ntest("keeps the limit", () => { assert.equal(limit, 100000); });\n',
   }];
   assert.deepEqual(interfaceLines(task, sources), ["lib/telemetry.ts: countsAsEdit"]);
+  const withHelper = interfaceLines(task, [...sources, {
+    file: "tests/interop.test.ts",
+    text: 'const tools = require("./dist/core/tools/index.js");\nimport { write_full_run } from "./conftest.py";\n',
+  }]);
+  assert.deepEqual(withHelper, ["lib/telemetry.ts: countsAsEdit"]);
   const prompt = blindPrompt(task, sources);
   assert.match(prompt, /lib\/telemetry\.ts: countsAsEdit/);
   assert.equal(prompt.includes("assert.equal"), false);

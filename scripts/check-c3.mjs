@@ -54,7 +54,9 @@ export function interfaceLines(task, sources) {
   for (const source of list) {
     for (const ref of extractReferences(source.text, source.file)) {
       const modulePath = ref.resolved?.[0];
-      if (!modulePath || /\.test\.ts$/.test(modulePath) || /\/test_/.test(modulePath)) continue;
+      if (!modulePath || !/\.(?:ts|tsx|py)$/.test(modulePath)) continue;
+      if (modulePath.startsWith("tests/") && !modulePath.startsWith("tests/fixtures/")) continue;
+      if (/\.test\.ts$/.test(modulePath) || /\/test_/.test(modulePath)) continue;
       if (!byModule.has(modulePath)) byModule.set(modulePath, new Set());
       if (ref.kind === "symbol") byModule.get(modulePath).add(ref.name);
     }
