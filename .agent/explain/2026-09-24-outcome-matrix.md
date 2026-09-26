@@ -121,3 +121,13 @@ Three S1 items were left unscored. The diff adds a file the handoff does not nam
 64 of 77 is 83%. That is under 90%. Section 5 stops here. The classifier is not reliable on these inputs, and the rest of this section would measure noise.
 
 S2 is the gap. None of the sixteen prompts name two numbered sections. Twelve answers were yes: `ab12c94`, `bd51f93`, `78ce7cb`, `59c9121`, `a2c7c72`, `9e26310`, `690b685`, `49d5a83`, `s6-benchmark`, `aoh-5cbfb21`, `aoh-fb5d493`, `aoh-c40f118`. The four nos were `a0043ca` at 0.48, `4384c58` at 0.48, `4704b4f` at 0.49, and `aoh-6ba7e7e` at 0.36. The yes answers ran from 0.55 to 0.97. `49d5a83` names two section keys and scored 0.97. The frozen rule counts numbered sections only, so that label stayed no. Counting that single item as yes would be 65 of 77, still under 90%. R1 missed only `690b685`, at 0.40 against a yes label.
+
+## Section 12 — suite repair
+
+The amended spec continues past the aggregate stop. Nothing in sections 2 through 7 is re-run until the graders are repaired. This section made no model call.
+
+The first-pass trees under `/tmp/routing-s2`, `/tmp/routing-s3`, `/tmp/routing-s4`, and `/tmp/routing-s5` were absent after the 2026-09-26 10:44 reboot. Phase A cannot regrade them. Later run trees go under `/home/george-contis/var/routing-runs`.
+
+Eight prompts now declare the path and the signatures the held-out tests import: `bd51f93`, `4384c58`, `59c9121`, `a2c7c72`, `690b685`, `49d5a83`, `s13-hard`, `aoh-c40f118`. The undeclared surface at `4384c58` is the explain one-shot, not `lib/score-ab.ts`. That file is not imported by the graded held-out test.
+
+`9e26310` does not survive. Its held-out change is one assertion inside an existing test, so it cannot fail on a visible half and a hidden half at once. Sixteen tasks remain. For each one, the hidden tests fail at the parent and pass at the commit, the interface audit reports nothing undeclared, and the visible half fails at the parent. The split is recorded on each task before any re-run.

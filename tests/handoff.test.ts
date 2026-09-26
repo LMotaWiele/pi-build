@@ -32,12 +32,20 @@ test("a named path that does not exist at the parent is missing, not implicated"
 test("a model id is not a file path", () => {
   const built = handoff("690b685");
   assert.equal(built.missing.some((file: string) => file.includes("gpt-5.6")), false);
-  assert.deepEqual(built.named, []);
+  assert.deepEqual(built.named, ["lib/telemetry.ts"]);
 });
 
 test("a bare filename the prompt names is recorded", () => {
   const built = handoff("bd51f93");
-  assert.deepEqual(built.missing, ["known.md"]);
+  assert.deepEqual(built.missing, [
+    "known.md",
+    "lib/settings-keys.ts",
+    "tests/fixtures/ab/src/format.ts",
+    "tests/fixtures/ab/src/parse.ts",
+    "tests/fixtures/ab/src/store.ts",
+    "tests/fixtures/ab/src/types.ts",
+    "tests/fixtures/ab/src/validate.ts",
+  ]);
 });
 
 test("section keys named in the prompt are shared surfaces", () => {
