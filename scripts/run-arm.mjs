@@ -100,9 +100,25 @@ function ensureWorktree(task, dir) {
   execFileSync("git", ["-C", dir, "clean", "-fd"], { stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function queryDb(dbPath) {
-  if (!fs.existsSync(dbPath)) return { cost: 0, parentCost: 0, rounds: 0, models: [], reads: 0 };
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+function emptyStats() {
+  return { cost: 0, parentCost: 0, rounds: 0, models: [], reads: 0 };
+}
+
+function isBusy(err) {
+  return err?.errcode === 5 || err?.errcode === 6 || /database is locked/i.test(String(err?.message || ""));
+}
+
+// A poll while pi holds the writer lock returns null. The caller skips that
+// sample. timeout is the sqlite busy wait, in milliseconds.
+export function queryDb(dbPath, timeoutMs = 200) {
+  if (!fs.existsSync(dbPath)) return emptyStats();
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true, timeout: timeoutMs });
+  } catch (err) {
+    if (isBusy(err)) return null;
+    throw err;
+  }
   try {
     const models = db.prepare(`
       SELECT DISTINCT model FROM inference_calls
@@ -132,9 +148,21 @@ function queryDb(dbPath) {
       }
     }
     return { cost: total.cost, parentCost: parent.cost, rounds: parent.n, models, reads };
+  } catch (err) {
+    if (isBusy(err) || /no such table/i.test(String(err?.message || ""))) return null;
+    throw err;
   } finally {
     db.close();
   }
+}
+
+function queryDbSettled(dbPath) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const stats = queryDb(dbPath, 500);
+    if (stats) return stats;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+  }
+  throw new Error(`telemetry database stayed locked: ${dbPath}`);
 }
 
 function killGroup(child) {
@@ -163,11 +191,20 @@ function runPi(task, arm, work, dbPath, sessionDir, logPath) {
   return new Promise((resolve) => {
     let stopped = null;
     const timer = setInterval(() => {
-      const stats = queryDb(dbPath);
-      const foreign = stats.models.filter((model) => !arm.allowed.includes(model) && !FIXTURE_MODELS.includes(model));
-      if (foreign.length) stopped = "pin";
-      else if (arm.cap != null && stats.cost > arm.cap) stopped = "cost-cap";
-      else if ((Date.now() - started) / 1000 > arm.wallS) stopped = "wall";
+      try {
+        if ((Date.now() - started) / 1000 > arm.wallS) {
+          stopped = "wall";
+        } else {
+          const stats = queryDb(dbPath);
+          if (stats) {
+            const foreign = stats.models.filter((model) => !arm.allowed.includes(model) && !FIXTURE_MODELS.includes(model));
+            if (foreign.length) stopped = "pin";
+            else if (arm.cap != null && stats.cost > arm.cap) stopped = "cost-cap";
+          }
+        }
+      } catch {
+        return;
+      }
       if (stopped) {
         clearInterval(timer);
         killGroup(child);
@@ -208,7 +245,10 @@ function appendRow(armName, row) {
     let text = fs.readFileSync(MATRIX, "utf8");
     const header = `## Section 12 Phase B — ${armName}`;
     if (!text.includes(header)) {
-      text += `\n${header}\n\nRun trees are under \`/home/george-contis/var/routing-runs/${armName}\`. A cost-cap stop is censored.\n\n| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |\n|---|---|---|---|---|---|---|---|---|---|\n`;
+      const deviation = armName === "luna"
+        ? "The first-pass trees were absent and the grader split changed, so this arm re-runs every surviving task, including prompts that did not change. "
+        : "";
+      text += `\n${header}\n\n${deviation}Run trees are under \`/home/george-contis/var/routing-runs/${armName}\`. A cost-cap stop is censored.\n\n| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |\n|---|---|---|---|---|---|---|---|---|---|\n`;
     }
     const section = text.slice(text.indexOf(header));
     const line = `| ${row.id} | ${row.class} | ${row.visible} | ${row.heldout} | ${row.provider} | ${row.parent} | ${row.rounds} | ${row.wall} | ${row.reads} | ${row.stopped || ""} |\n`;
@@ -254,6 +294,9 @@ async function runTask(task, armName, arm, gradeOnly) {
   fs.mkdirSync(sessionDir, { recursive: true });
   let pi = { code: null, stopped: null, wallS: 0 };
   if (!gradeOnly) {
+    for (const extra of ["", "-wal", "-shm"]) fs.rmSync(dbPath + extra, { force: true });
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+    fs.mkdirSync(sessionDir, { recursive: true });
     restore.push(`${new Date().toISOString()} pi-start`);
     fs.appendFileSync(path.join(root, "restore.log"), `${restore.join("\n")}\n`);
     pi = await runPi(task, arm, work, dbPath, sessionDir, path.join(root, "pi.log"));
@@ -272,7 +315,7 @@ async function runTask(task, armName, arm, gradeOnly) {
   fs.writeFileSync(path.join(root, "visible-grade.txt"), visibleGrade.graded.out);
   fs.writeFileSync(path.join(root, "hidden-grade.txt"), hiddenGrade.graded.out);
   fs.appendFileSync(path.join(root, "restore.log"), `${restore.join("\n")}\n`);
-  const stats = gradeOnly ? { cost: 0, parentCost: 0, rounds: 0, models: [], reads: 0 } : queryDb(dbPath);
+  const stats = gradeOnly ? emptyStats() : queryDbSettled(dbPath);
   const stopped = pi.stopped;
   const result = {
     id: task.id,

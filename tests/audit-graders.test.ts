@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -14,7 +16,7 @@ import {
   resolveTs,
   signatureOf,
 } from "../scripts/audit-graders.mjs";
-import { classify } from "../scripts/run-arm.mjs";
+import { classify, queryDb } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
 
@@ -139,6 +141,32 @@ test("the repaired suite has no undeclared interface and sixteen tasks that spli
   const explain = tasks.find((task) => task.id === "4384c58");
   assert.match(explain.prompt, /^- export const explainStdio$/m);
   assert.equal(explain.prompt.includes("PI_OWNED_SETTING_KEYS"), false);
+});
+
+test("a locked telemetry database returns null instead of throwing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "routing-lock-"));
+  const dbPath = path.join(dir, "telemetry.db");
+  const writer = new DatabaseSync(dbPath);
+  writer.exec(`
+    CREATE TABLE inference_calls (
+      model TEXT, cost_usd REAL, session_id TEXT, parent_turn_id TEXT
+    );
+    CREATE TABLE tool_calls (
+      id INTEGER, ts TEXT, tool_name TEXT, path TEXT, session_id TEXT, parent_turn_id TEXT
+    );
+  `);
+  writer.exec("BEGIN EXCLUSIVE");
+  const started = Date.now();
+  const locked = queryDb(dbPath, 200);
+  assert.equal(locked, null);
+  assert.ok(Date.now() - started < 2000);
+  writer.exec("ROLLBACK");
+  writer.close();
+  const open = queryDb(dbPath, 200);
+  assert.ok(open);
+  assert.equal(open.cost, 0);
+  assert.deepEqual(open.models, []);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("a stopped run is censored and a visible pass with a hidden fail is silent", () => {
