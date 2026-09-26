@@ -1,0 +1,4 @@
+# Vendored once from the npm registry; inlined into index.html by render/page.py.
+# name            version  file           sha256                                                            license
+d3                7.9.0    d3.min.js      f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539  ISC (d3.LICENSE)
+@dagrejs/dagre    3.1.1    dagre.min.js   3152d214941a5df3a3d4c079dfa338c3cd7a6c0d4c1b4c3a2fdb6bba6f6facf9  MIT (dagre.LICENSE, dagre.LEGAL.txt)
