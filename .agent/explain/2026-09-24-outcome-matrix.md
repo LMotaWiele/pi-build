@@ -238,3 +238,13 @@ Corpus: the fourteen pinned Luna runs that finished. The two pin-censored runs a
 C1, scripted, symbols and numbers from the prompt against the model's added text and the visible tests. Silent fails flagged 0/6. Passes flagged 0/5. Loud fails flagged 2/3. Six of the silent-fail prompts name a symbol the added text also contains, or name none.
 
 C2, one Jev call per prompt line, the line plus the added text, hidden tests withheld. Silent fails flagged 4/6. Passes flagged 4/5. Loud fails flagged 3/3. Provider cost 0.006862 across 83 calls. Recall is under 80% and the false-alarm rate is over 20%, so C3 is next.
+
+## Section 13 — checkers, C3
+
+Corpus stays the fourteen finished Luna runs. Each generated test was graded on the Luna worktree and then deleted. A test that failed to load is not a flag.
+
+Names only. Silent fails flagged 4/6. Passes flagged 3/5. Loud fails flagged 2/3. Provider cost 0.031235. `59c9121` passed its blind test. `aoh-c40f118` imported a module that is not in the tree, so that test is unloadable. `a0043ca`, `4704b4f`, and `49d5a83` failed on correct code: the tests invented callback fields or a file path.
+
+Signatures. The appendix carries each function signature from the commit, and the prompt forbids an invented field, callback name, or file path. A class body stays out. Silent fails flagged 0/6. Passes flagged 2/5. Loud fails flagged 2/3. Provider cost 0.024568. `a0043ca` still expects the queue error to reject. `4704b4f` still calls the injector with an empty object. `aoh-c40f118` is unloadable again.
+
+C2 together with the signature pass flags 4 of 6 silent fails and 4 of 5 passes. C2 together with the names-only pass flags 5 of 6 silent fails and 5 of 5 passes. No combination reaches 80% recall with false alarms under 20%. C4 reviews the two silent fails those checkers left, `78ce7cb` and `59c9121`, and the first two held-out passes in the Phase B Luna table, `a0043ca` and `4384c58`.

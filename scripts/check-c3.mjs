@@ -298,7 +298,7 @@ export function gradeBlind(work, rel, kind) {
   return { code, pass, fail, out };
 }
 
-function sessionStats(sessionDir) {
+export function sessionStats(sessionDir) {
   const stats = { cost: 0, rounds: 0, models: [], users: 0 };
   if (!fs.existsSync(sessionDir)) return stats;
   const models = new Set();
@@ -331,12 +331,12 @@ function killGroup(child) {
   }, 5000).unref();
 }
 
-function runSandboxed(prompt, genDir, logPath) {
+export function runSandboxed(prompt, genDir, logPath, arm = LUNA) {
   fs.mkdirSync(genDir, { recursive: true });
   const sessionDir = path.join(genDir, "sessions");
   fs.rmSync(sessionDir, { recursive: true, force: true });
   fs.mkdirSync(sessionDir, { recursive: true });
-  const args = [...sandboxArgs(genDir), "--", "pi", ...piArgs(prompt, LUNA, "/work/sessions")];
+  const args = [...sandboxArgs(genDir), "--", "pi", ...piArgs(prompt, arm, "/work/sessions")];
   const log = fs.openSync(logPath, "w");
   const started = Date.now();
   const child = spawn("bwrap", args, { detached: true, stdio: ["ignore", log, log] });
@@ -344,12 +344,12 @@ function runSandboxed(prompt, genDir, logPath) {
     let stopped = null;
     const timer = setInterval(() => {
       const elapsed = (Date.now() - started) / 1000;
-      if (elapsed > LUNA.wallS) stopped = "wall";
+      if (elapsed > arm.wallS) stopped = "wall";
       else {
         const stats = sessionStats(sessionDir);
-        const foreign = stats.models.filter((model) => !LUNA.allowed.includes(model));
+        const foreign = stats.models.filter((model) => !arm.allowed.includes(model));
         if (foreign.length) stopped = "pin";
-        else if (stats.cost > LUNA.cap) stopped = "cost-cap";
+        else if (stats.cost > arm.cap) stopped = "cost-cap";
       }
       if (stopped) {
         clearInterval(timer);

@@ -30,6 +30,7 @@ import {
   scoreChecks,
   snapshotTree,
 } from "../scripts/check-c3.mjs";
+import { C4_IDS, reviewPrompt, reviewVerdict } from "../scripts/check-c4.mjs";
 import { classify, piArgs, queryDb } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
@@ -362,6 +363,21 @@ test("grading a blind test restores the worktree", () => {
   assert.equal(fs.existsSync(path.join(dir, "tests-new.ts")), false);
   assert.equal(sameTree(before, snapshotTree(dir)), true);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a Sol review flags a missing requirement and ignores other prose", () => {
+  assert.deepEqual(C4_IDS, ["78ce7cb", "59c9121", "a0043ca", "4384c58"]);
+  assert.deepEqual(reviewVerdict("1. PRESENT the cap\n2. MISSING the default\n"), {
+    flagged: true,
+    outcome: "missing",
+    missing: 1,
+    present: 1,
+  });
+  assert.equal(reviewVerdict("I am not sure.").flagged, false);
+  const prompt = reviewPrompt(["Set the default to 100000."], "const limit = 100000;");
+  assert.match(prompt, /100000/);
+  assert.match(prompt, /MISSING/);
+  assert.equal(prompt.includes("heldout"), false);
 });
 
 test("a signature keeps a parameter type and a return type", () => {

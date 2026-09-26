@@ -81,6 +81,7 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 | 60 | Pinned Luna on the sixteen repaired tasks: 5 pass, 6 silent fail, 3 loud fail, 2 censored. Provider cost 0.337316. aoh-6ba7e7e and aoh-5cbfb21 were stopped when bounds retried at Sol after three consecutive tool failures. Nine completed failures keeps Phase C open until the checkers are scored. | SPEC-routing-orchestration §12 | 2026-09-26 |
 | 61 | Terra at medium thinking passed aoh-fb5d493 and silent-failed aoh-5cbfb21. Provider cost 0.762764. The probe passed one task, so Terra is the first Phase C step and Sol stays behind it. | SPEC-routing-orchestration §12.6 | 2026-09-26 |
 | 62 | On the fourteen finished Luna runs, C1 flagged 0 of 6 silent fails and 0 of 5 passes. C2 flagged 4 of 6 silent fails and 4 of 5 passes, at provider cost 0.006862. Recall is under 80% and false alarms are over 20%, so C3 is next and Phase C waits. | SPEC-routing-orchestration §13 | 2026-09-26 |
+| 63 | Names-only blind tests flagged 4 of 6 silent fails and 3 of 5 passes, provider cost 0.031235. Signature-constrained tests flagged 0 of 6 silent fails and 2 of 5 passes, provider cost 0.024568. No combination reaches 80% recall with false alarms under 20%. C4 reviews 78ce7cb, 59c9121, a0043ca, and 4384c58. | SPEC-routing-orchestration §13 | 2026-09-26 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.
