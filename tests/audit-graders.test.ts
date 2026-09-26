@@ -16,6 +16,8 @@ import {
   resolveTs,
   signatureOf,
 } from "../scripts/audit-graders.mjs";
+import { addedText, checklistOf, symbolsOf, uncovered } from "../scripts/check-c1.mjs";
+import { coverageState, requirementsOf } from "../scripts/check-c2.mjs";
 import { classify, piArgs, queryDb } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
@@ -178,6 +180,34 @@ test("model, thinking, and session flags come before the end of options", () => 
   assert.ok(args.indexOf("--approve") < end);
   assert.ok(args.indexOf("--session-dir") < end);
   assert.deepEqual(args.slice(end), ["--", "do the task"]);
+});
+
+test("checklist reconciliation ignores a requirement whose symbol was added", () => {
+  const prompt = [
+    "Set maxTurnPromptTokens to 100000.",
+    "Declared interface, names and signatures only:",
+    "- export function readSmartRouterTier(cwd: string): string | null",
+    "Keep the note short.",
+  ].join("\n");
+  const requirements = checklistOf(prompt);
+  assert.equal(requirements.some((line) => line.startsWith("Declared interface")), false);
+  assert.ok(requirements.some((line) => line.includes("100000")));
+  assert.ok(symbolsOf(prompt).includes("readSmartRouterTier"));
+  const evidence = addedText(JSON.stringify({
+    edits: [{ newText: "export function readSmartRouterTier(cwd: string): string | null { return null; }" }],
+  }));
+  const flags = uncovered(requirements, evidence);
+  assert.equal(flags.some((flag) => flag.requirement.includes("readSmartRouterTier")), false);
+  assert.ok(flags.some((flag) => flag.requirement.includes("100000")));
+});
+
+test("a coverage state keeps the requirement and omits hidden tests", () => {
+  const prompt = "Declared interface, names and signatures only:\nSet the default to 100000.\n";
+  assert.deepEqual(requirementsOf(prompt), ["Set the default to 100000."]);
+  const state = coverageState("Set the default to 100000.", "const limit = 20000000;");
+  assert.match(state, /100000/);
+  assert.match(state, /20000000/);
+  assert.equal(state.includes("hidden"), false);
 });
 
 test("a stopped run is censored and a visible pass with a hidden fail is silent", () => {

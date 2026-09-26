@@ -219,3 +219,22 @@ The first-pass trees were absent and the grader split changed, so this arm re-ru
 | s13-hard | Loud fail | 3 pass, 1 fail | 2 pass, 2 fail | 0.02532204 | 0.02532204 | 21 | 189.414 | 0 |  |
 
 Pinned launch. Sixteen sessions, one user message each, model gpt-5.6-luna. 5 pass, 6 silent fail, 3 loud fail, 2 censored. Provider cost 0.337316, parent cost 0.327876, 319 rounds. `aoh-6ba7e7e` and `aoh-5cbfb21` are censored: after three consecutive tool failures the bounds extension retried at Sol, and the pin supervisor stopped the process. Sol's row has cost 0. The other fourteen finished on Luna only. Hidden files were hashed before the overlay.
+
+## Section 12 Phase B — terra
+
+Run trees are under `/home/george-contis/var/routing-runs/terra`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| aoh-fb5d493 | Pass | 5 pass, 0 fail | 4 pass, 0 fail | 0.28786840 | 0.28786840 | 19 | 166.063 | 8 |  |
+| aoh-5cbfb21 | Silent fail | 6 pass, 0 fail | 3 pass, 2 fail | 0.47489520 | 0.45424880 | 27 | 263.272 | 13 |  |
+
+Pinned at medium thinking, one user message, model gpt-5.6-terra. One pass and one silent fail. Provider cost 0.762764. The probe passed one task, so Terra is the first Phase C step and Sol stays behind it. The low-thinking rerun is not taken.
+
+## Section 13 — checkers, C1 and C2
+
+Corpus: the fourteen pinned Luna runs that finished. The two pin-censored runs are out. An old run is not in this corpus.
+
+C1, scripted, symbols and numbers from the prompt against the model's added text and the visible tests. Silent fails flagged 0/6. Passes flagged 0/5. Loud fails flagged 2/3. Six of the silent-fail prompts name a symbol the added text also contains, or name none.
+
+C2, one Jev call per prompt line, the line plus the added text, hidden tests withheld. Silent fails flagged 4/6. Passes flagged 4/5. Loud fails flagged 3/3. Provider cost 0.006862 across 83 calls. Recall is under 80% and the false-alarm rate is over 20%, so C3 is next.
