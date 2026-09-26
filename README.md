@@ -18,12 +18,13 @@ Stock pi reads whatever the model asks to read, stays on the model you picked, a
 - **Plan mode** (`/plan`, or Ctrl+Alt+P) is the pi example: read-only exploration, then execution of the numbered plan. **Post-edit typecheck** runs `tsc --noEmit` after a TypeScript edit or write, debounced, and reports the result in the status line.
 - **Cache warming is off.** `models.json` keeps the GPT-5.6 context window at 272000 and the prompt-cache TTL at 1800 seconds, so a long-context price does not reprice the whole request. `defaultProjectTrust` is `always`.
 
-Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, and `bounds` turns off when its `enabled` field is `false`. Leaving the field out leaves the extension on. `routing.enabled` stays false. There is no routing extension. The block is the tier map.
+Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, `bounds`, and `map` turns off when its `enabled` field is `false`. Leaving the field out leaves the extension on. `routing.enabled` stays false. There is no routing extension. The block is the tier map.
 
 ## Requirements
 
 - Node.js >= 22.19.0
 - `jq`, `git`, and `npm`
+- [uv](https://docs.astral.sh/uv/) is optional. The map needs it; everything else runs without it.
 - [mise](https://mise.jdx.dev/) is optional. If it is missing and Node is new enough, install continues.
 
 Pi is installed globally at 0.87.0 by the script (`npm i -g @earendil-works/pi-coding-agent@0.87.0`).
@@ -111,6 +112,24 @@ pi --subagent-max-depth 2
 
 The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `postEditTypecheck`, and `bounds`. Plan mode has no settings flag; leave it with `/plan`.
 
+## Map
+
+`extensions/map.ts` rebuilds a map of the project after every turn that read or wrote a file inside it. The build is `tools/map`, a Python tool run with [uv](https://docs.astral.sh/uv/); the extension never waits for it, and a second request during a build runs once more when the first exits. Without `uv` on `PATH` the extension logs one warning and stays off.
+
+The page is `.agent/map/index.html`: one self-contained file that opens from disk.
+
+- **Treemap**: files and functions sized by lines of code, colored by complexity, agent edits, reads, cost, or git commits. Files edited in the highlighted turn get a thick outline.
+- **Call graph**: turns, loops, model calls, tool calls, guards, and explain or recap subagents from `telemetry.db`, over the window or one turn at a time.
+- **Data model**: types, SQLite tables, and file stores, their relations, and which code reads or writes them.
+
+```bash
+/map          # build now and print the page path
+/map open     # build and open it
+uv run --project tools/map python -m map_build --repo . --telemetry ~/.pi/agent/telemetry.db
+```
+
+`.agent/map/` holds a `.gitignore` of `*`, so the map is never committed. A project can declare its stores and query rules in `.map/project.toml` and `.map/rules/`; this repository's are the example. Settings block `map`: `enabled`, `outDir` (default `.agent/map`), `windowDays` (7), `uv` (`"uv"`), `toolDir` (default `tools/map` beside the extension). `tools/map/SPEC.md` is the contract.
+
 ## Check the install
 
 ```bash
@@ -119,7 +138,7 @@ The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `p
 ./doctor.sh
 ```
 
-`--offline` checks JSON, the versions in `deps.txt`, that `pi list` contains the pinned packages, the project's memory files, and the unit tests, then times `pi --version`. It prints `skipped: no credentials` for the live calls and exits 0 when that subset passes. `--project <path>` checks one project's memory files and exits. It does not start a session. A status in the index that disagrees with the note's `**Status:**` line fails the check.
+`--offline` checks JSON, the versions in `deps.txt`, that `pi list` contains the pinned packages, the project's memory files, and the unit tests, runs the map tests when `uv` is installed (else prints `skipped: uv not installed`), then times `pi --version`. It prints `skipped: no credentials` for the live calls and exits 0 when that subset passes. `--project <path>` checks one project's memory files and exits. It does not start a session. A status in the index that disagrees with the note's `**Status:**` line fails the check.
 
 Full `./doctor.sh` exits 1 when a name in `secrets.example.env` is unset. When every listed name is set, it smokes each distinct tier id from `settings/hosts/machina.json` and calls `note_open` and `queue_append`.
 
@@ -149,8 +168,10 @@ sqlite3 ~/.pi/agent/telemetry.db < scripts/report.sql
 AGENTS.md                  this repo's contract
 agent/AGENTS.md            global instructions, symlinked into ~/.pi/agent/
 agent/models.json          the author's context window and prompt-cache TTL
-extensions/                memory, read guard, bounds, recap, explain, plan mode
+extensions/                memory, read guard, bounds, recap, explain, plan mode, map
 lib/                       markdown, scaffold, skill, telemetry
+tools/map/                 the map build (Python, uv); SPEC.md is its contract
+.map/                      this repo's map stores and query rules
 settings/hosts/machina.json    the author's models
 settings/hosts/example.json    portable host: one id, or several tier ids
 settings/web-search.json   pi-web-access config
@@ -169,6 +190,7 @@ MIT, copyright (c) 2026 LMotaWiele. See [LICENSE](LICENSE).
 
 - `extensions/plan-mode/` is the pi 0.87.0 example. Copyright (c) 2025 Mario Zechner, MIT.
 - `extensions/post-edit-typecheck.ts` is a modified copy from [Rmnlly/pi-config](https://github.com/Rmnlly/pi-config) at `ac0bb8ed`, and that repository publishes no license. The MIT license here does not grant rights to that file. Delete it if you need a uniformly MIT tree. The other extensions load without it.
+- `tools/map/map_build/render/vendor/` holds d3 7.9.0 (ISC, copyright Mike Bostock) and @dagrejs/dagre 3.1.1 (MIT, copyright Chris Pettitt), inlined into the map page.
 - `pi-web-access` and `pi-subagent` are not vendored. `install.sh` clones the pinned refs. Both upstream projects are MIT.
 - Pi itself is MIT, copyright (c) 2025 Mario Zechner.
 

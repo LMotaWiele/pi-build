@@ -10,6 +10,7 @@ This file is the contract for the harness repository. The file other projects st
 - `.pi/` and `.grok/` are harness wiring. They can sit side by side. Do not merge them, and do not require either directory to exist.
 - `templates/agent-memory/` is what a session copies into a project that does not have these files yet. Copying never replaces a file that is already there.
 - `settings/hosts/machina.json` is one person's model list. `settings/hosts/example.json` is the portable host: one model id is enough, and distinct ids per tier are how the bound retry and the explain model are split. `routing.enabled` stays false. The session model is `pi-smart-router`.
+- `tools/map/` is the map build, a standalone Python tool (uv) that never imports pi; `extensions/map.ts` runs it after a turn. `tools/map/SPEC.md` is its contract. `.map/` declares this repo's stores and query rules. Generated output goes to `.agent/map/`, which validation skips and git ignores.
 - `scripts/migrate-notes.js` rewrites a legacy notes tree into siblings for a person to review. A session does not run it.
 
 ## Checks
@@ -18,6 +19,7 @@ This file is the contract for the harness repository. The file other projects st
 node --experimental-strip-types --test tests/*.test.ts
 ./doctor.sh --offline
 ./doctor.sh --project .
+uv run --project tools/map pytest -q
 ```
 
 ## Notes

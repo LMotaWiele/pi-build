@@ -74,6 +74,12 @@
     "maxTurnPromptTokens": 20000000,
     "maxTurnCostUsd": 12
   },
+  "map": {
+    "enabled": true,
+    "outDir": ".agent/map",
+    "windowDays": 7,
+    "uv": "uv"
+  },
   "quotaGate": {
     "fiveHour": 95,
     "weekly": 95

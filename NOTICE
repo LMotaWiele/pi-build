@@ -21,6 +21,16 @@ extensions/post-edit-typecheck.ts
   does not grant rights to this file. Delete it if you need a tree that is
   covered entirely by the MIT License. The other extensions load without it.
 
+tools/map/map_build/render/vendor/
+  Vendored unchanged from the npm registry and inlined into the generated
+  map page. Versions and checksums are in vendor/VERSIONS.
+  d3 7.9.0
+    Copyright 2010-2023 Mike Bostock
+    ISC License: vendor/d3.LICENSE
+  @dagrejs/dagre 3.1.1
+    Copyright (c) 2012-2014 Chris Pettitt
+    MIT License: vendor/dagre.LICENSE, bundled notices in vendor/dagre.LEGAL.txt
+
 The packages installed by install.sh are not vendored in this repository.
 They remain under their own licenses:
 

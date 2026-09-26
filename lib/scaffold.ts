@@ -286,7 +286,10 @@ export function validateProject(root: string, templatesDir = templatesDirFromSet
   else pass("skill matches README");
 
   const agentDir = path.join(project, ".agent");
+  // The generated map names harness paths by design; it is output, not memory.
+  const mapDir = path.join(agentDir, "map") + path.sep;
   for (const file of walkFiles(agentDir)) {
+    if (file.startsWith(mapDir)) continue;
     const text = fs.readFileSync(file, "utf8");
     if (NEUTRAL.test(text)) fail(`harness name in ${path.relative(project, file)}`);
   }

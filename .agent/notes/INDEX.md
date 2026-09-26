@@ -22,7 +22,7 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 
 | # | Item | Source | Added |
 |---|---|---|---|
-| 1 | The session map is specified in tools/map/SPEC.md. Build those two views from the fixtures. The tiered-retry plan stays unfinished, and the routing suite stays closed. | human | 2026-09-26 |
+| 1 | The map is built to tools/map/SPEC.md (tools/map, extensions/map.ts). Decide whether to apply the deferred telemetry columns and explain marker (SPEC section 14). The tiered-retry plan stays unfinished, and the routing suite stays closed. | human | 2026-09-26 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.
@@ -31,7 +31,7 @@ Close a row by deleting it. Do not leave completed rows with a status marker —
 
 Standing constraints. These bind every session in this repo until removed here.
 
-- The quota gate is installed. Do not add another extension. Sections 5 and 6 stay unrun. One patch to pi-smart-router already names the pi 0.87 registry seam. A second patch to that package stops the run. The routing suite stays closed.
+- The quota gate and the map are installed. Do not add another extension. Sections 5 and 6 stay unrun. One patch to pi-smart-router already names the pi 0.87 registry seam. A second patch to that package stops the run. The routing suite stays closed.
 - A prompt that adds a file under extensions/, or that names two or more harness stages, is pinned to openai-codex/gpt-5.6-sol. The section 6 benchmark stays on pi-smart-router. The router package is left as it is.
 
 ## Glossary (optional)
