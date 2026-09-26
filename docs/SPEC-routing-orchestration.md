@@ -2,7 +2,7 @@
 
 **Place at `docs/SPEC-routing-orchestration.md`.**
 
-**Status:** open
+**Status:** closed 2026-09-26 by `docs/SPEC-spec-translation.md`. The measurements stand. The suite stays closed.
 **Executor:** Grok Build
 **Written:** 2026-09-24
 **Relation to other specs:** `docs/SPEC-harness-setup.md` §1–§14 are done and stand. Its §15 is superseded by this spec. §14.3's launcher stays as a fallback until §8 here replaces it.

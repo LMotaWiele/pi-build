@@ -28,6 +28,18 @@ memory-gate skips `pi_build_memory` while recap is enabled. One key, one owner.
 
 No second context rewriter is stacked on either seam.
 
+## Quota gate
+
+`extensions/quota-gate.ts` writes no section key, so it is outside the invalidation count above. `lib/quota.ts` makes the decisions. The extension's events, in order:
+
+1. `session_start` polls `GET /backend-api/wham/usage` when `ctx.model.provider` is `openai-codex`, then writes a soft hold if a window is already over its threshold.
+2. `after_provider_response` reads `status` and `headers` (`x-codex-primary-used-percent`, `x-codex-secondary-used-percent`) and may write a soft hold.
+3. `message_end`, for an assistant message, asks when a hold file exists. Print mode has no UI, so the process exits 75.
+4. `before_agent_start` does that check before the first inference.
+5. `agent_end` writes a hard hold when the last assistant `errorMessage` and the preceding response status are a 429 usage limit. `agent_end` itself has no error object.
+
+The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`). `extensions/bounds.ts` runs its escalate retry only when that file is absent and `PI_BUILD_RETRY` is not `0`. `bin/pi-continue` is the only way to clear a hold. Thresholds come from the `quotaGate` settings block through `readPiSettings()`, the same loader bounds uses. `PI_BUILD_QUOTA_5H` and `PI_BUILD_QUOTA_WEEKLY` override the block.
+
 ## Invalidation budget
 
 Maximum prefix invalidation points per turn: 3

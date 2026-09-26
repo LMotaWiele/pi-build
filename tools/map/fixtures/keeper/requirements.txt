@@ -1,0 +1,9 @@
+# Layout fixture. Do not install.
+langgraph
+langchain
+chromadb
+aiosqlite
+fastembed
+httpx
+python-telegram-bot
+pydantic

@@ -4,8 +4,10 @@ Documents for this project live in this repository.
 
 | What | Where |
 |---|---|
-| Specs | `docs/design/`, the harness spec at `docs/SPEC-harness-setup.md`, and the routing spec at `docs/SPEC-routing-orchestration.md` |
-| Routing and orchestration | `docs/SPEC-routing-orchestration.md`. Open. §12, added 2026-09-24, repairs the suite and blocks any re-run of §2–§7 until that repair is done. §13, added the same day, scores checkers on the runs already in hand, after Phase B and before Phase C. |
+| Specs | `docs/design/`, the harness spec at `docs/SPEC-harness-setup.md`, the routing spec at `docs/SPEC-routing-orchestration.md`, and the translation spec at `docs/SPEC-spec-translation.md` |
+| Routing and orchestration | `docs/SPEC-routing-orchestration.md`. Closed 2026-09-26 by `docs/SPEC-spec-translation.md`. The suite stays closed. |
+| Spec translation | `docs/SPEC-spec-translation.md`. Open. Step 0 is installed. A plan for `docs/SPEC-production-config.md` §2 and §5.2 was started and left unfinished. Steps 2 and 3 have not started. |
+| Session map | `tools/map/SPEC.md`. Two views: the call graph and the source tree. Fixtures are `tools/map/fixtures/telemetry.db` and `tools/map/fixtures/keeper/`. |
 | Harness setup spec | `docs/SPEC-harness-setup.md`. Closed 2026-09-24. Stage 4b stands for the §6 benchmark. Supersedes the context spec. |
 | Measurement spec | `docs/design/SPEC-delegation-ab.md`. §1–§3 are committed. §4–§6 are withdrawn. |
 | Context spec | `docs/design/SPEC-context-500k.md`. Superseded by the harness setup spec. Kept for history. Not executed. |

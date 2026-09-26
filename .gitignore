@@ -3,6 +3,7 @@ tests/fixtures/ab/node_modules/
 trust.json
 npm/
 *.db
+!tools/map/fixtures/telemetry.db
 .pi-smart-router/
 sessions/
 *.env

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import boundsExtension from "../extensions/bounds.ts";
+import { clearHold, writeHold } from "../lib/quota.ts";
 import {
   beginUserTurn,
   boundReason,
@@ -189,4 +190,85 @@ test("a bound with written files retries once at escalate", async () => {
     await bounds.emit("message_end", {}, ctx);
     assert.equal(bounds.sent, "");
   });
+});
+
+function registry() {
+  const model = { provider: "openai-codex", id: "gpt-5.6-sol" };
+  return {
+    getAll: () => [model],
+    find: (provider: string, id: string) => (provider === model.provider && id === model.id ? model : undefined),
+  };
+}
+
+test("a bound does not retry while a quota hold file exists", async () => {
+  const { dir, settings } = workspace();
+  const holdPath = path.join(dir, "quota-hold.json");
+  const previousHold = process.env.PI_BUILD_QUOTA_HOLD;
+  process.env.PI_BUILD_QUOTA_HOLD = holdPath;
+  writeHold(holdPath, { reason: "5h", hard: false, setAt: "2026-09-26T00:00:00Z", windows: [] });
+  try {
+    await withSettings(settings, async () => {
+      const bounds = fakePi();
+      await boundsExtension(bounds as never);
+      beginUserTurn("sess", "original prompt");
+      noteWrittenFile("src/a.ts");
+      bumpLoopIndex();
+      let aborted = false;
+      const ctx = {
+        abort() {
+          aborted = true;
+        },
+        cwd: dir,
+        sessionManager: { getSessionId: () => "sess" },
+        modelRegistry: registry(),
+      };
+      await bounds.emit("message_end", {}, ctx);
+      assert.equal(aborted, true);
+      assert.equal(bounds.modelSet, false);
+      assert.equal(bounds.sent, "");
+
+      clearHold(holdPath);
+      await bounds.emit("before_agent_start", { prompt: "other", systemPromptOptions: { sections: {} } }, ctx);
+      beginUserTurn("sess", "original prompt");
+      noteWrittenFile("src/b.ts");
+      bumpLoopIndex();
+      await bounds.emit("message_end", {}, ctx);
+      assert.equal(bounds.modelSet, true);
+      assert.match(bounds.sent, /^bounded at /);
+    });
+  } finally {
+    if (previousHold === undefined) delete process.env.PI_BUILD_QUOTA_HOLD;
+    else process.env.PI_BUILD_QUOTA_HOLD = previousHold;
+    clearHold(holdPath);
+  }
+});
+
+test("PI_BUILD_RETRY=0 skips the bounds retry", async () => {
+  const { dir, settings } = workspace();
+  const previous = process.env.PI_BUILD_RETRY;
+  process.env.PI_BUILD_RETRY = "0";
+  try {
+    await withSettings(settings, async () => {
+      const bounds = fakePi();
+      await boundsExtension(bounds as never);
+      beginUserTurn("sess", "original prompt");
+      noteWrittenFile("src/a.ts");
+      bumpLoopIndex();
+      let aborted = false;
+      await bounds.emit("message_end", {}, {
+        abort() {
+          aborted = true;
+        },
+        cwd: dir,
+        sessionManager: { getSessionId: () => "sess" },
+        modelRegistry: registry(),
+      });
+      assert.equal(aborted, true);
+      assert.equal(bounds.modelSet, false);
+      assert.equal(bounds.sent, "");
+    });
+  } finally {
+    if (previous === undefined) delete process.env.PI_BUILD_RETRY;
+    else process.env.PI_BUILD_RETRY = previous;
+  }
 });

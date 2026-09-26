@@ -1,12 +1,12 @@
 # Routing ladder
 
-**Status:** open
+**Status:** sealed
 **Topic:** routing ladder
 **Last updated:** 2026-09-26
 
 ## Current claim
 
-`docs/SPEC-routing-orchestration.md` is open. The task file has seventeen tasks. `9e26310` cannot be split and is out of the repaired runs, so sixteen tasks were measured. The pinned Luna result is 5 pass, 6 silent fail, 3 loud fail, 2 censored, provider cost 0.337316. Phase C spent 6.504868 of its 10 dollar cap and produced no pass, so the repaired handoff rerun was skipped. §7 has not named a policy. §5.4, §5.5, and §6 through §9 have not run.
+`docs/SPEC-spec-translation.md` closed this ladder on 2026-09-26. The measurements stand. The hold check in bounds belongs to that spec. The task file has seventeen tasks. `9e26310` cannot be split and is out of the repaired runs, so sixteen tasks were measured. The pinned Luna result is 5 pass, 6 silent fail, 3 loud fail, 2 censored, provider cost 0.337316. Phase C spent 6.504868 of its 10 dollar cap and produced no pass, so the repaired handoff rerun was skipped. §7 has not named a policy. §5.4, §5.5, and §6 through §9 have not run.
 
 The hook-trace hidden check on `59c9121` asks for a naming channel the prompt does not state. The prompt records a handler that does not name itself as unknown plus its sequence number, and the declared interface does not give `attachTelemetry` a second argument. Luna, Terra, and Sol each kept the one-argument form and recorded `unknown:1`.
 

@@ -1,0 +1,1 @@
+"""External streams. Layout fixture."""

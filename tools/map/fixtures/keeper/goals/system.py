@@ -1,0 +1,1 @@
+"""Standing goals. Layout fixture."""

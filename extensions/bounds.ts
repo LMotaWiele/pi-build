@@ -33,6 +33,7 @@ import {
   turnSnapshot,
   writtenFiles,
 } from "../lib/telemetry.ts";
+import { defaultHoldPath, readHold } from "../lib/quota.ts";
 
 type SessionModel = { provider: string; id: string; name?: string };
 
@@ -195,7 +196,13 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
         }
       }
       const prompt = currentPrompt();
-      const retry = written.length > 0 && !explainOneShot() && claimBoundRetry(prompt);
+      const held = readHold(defaultHoldPath(process.env)) !== null;
+      const retry =
+        !held &&
+        process.env.PI_BUILD_RETRY !== "0" &&
+        written.length > 0 &&
+        !explainOneShot() &&
+        claimBoundRetry(prompt);
       const line = boundCheckpointLine(reason, written, firstUnwrittenPath(noteText, written));
       await runBoundAbort({
         reason,

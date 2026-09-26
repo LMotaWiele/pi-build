@@ -1048,14 +1048,21 @@ export function explainOneShot(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.PI_BUILD_EXPLAIN_ONESHOT === "1";
 }
 
+/**
+ * The child writes to the default ledger, not the trial database.
+ * `PI_BUILD_PARENT_TURN` is this process's turn, so the child's rows join here
+ * instead of opening a second root. An inherited grandparent id is replaced.
+ */
 export function explainSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base, PI_BUILD_EXPLAIN_ONESHOT: "1" };
   delete env.PI_BUILD_TELEMETRY_DB;
-  delete env.PI_BUILD_PARENT_TURN;
   delete env.PI_OFFLINE;
   for (const key of Object.keys(env)) {
     if (key.startsWith("PI_SUBAGENT_")) delete env[key];
   }
+  const parent = turnSnapshot().turnId.trim();
+  if (parent) env.PI_BUILD_PARENT_TURN = parent;
+  else delete env.PI_BUILD_PARENT_TURN;
   return env;
 }
 

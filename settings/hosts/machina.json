@@ -78,6 +78,10 @@
     "maxTurnPromptTokens": 20000000,
     "maxTurnCostUsd": 12
   },
+  "quotaGate": {
+    "fiveHour": 95,
+    "weekly": 95
+  },
   "routing": {
     "enabled": false,
     "tiers": {

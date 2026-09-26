@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec node --experimental-strip-types --no-warnings "$(dirname "$0")/../scripts/pi-rework.ts" "$@"

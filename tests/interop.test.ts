@@ -22,6 +22,7 @@ import {
   activeTierName,
   attachTelemetry,
   beginUserTurn,
+  bumpLoopIndex,
   consumeTurnCostLine,
   countsAsEdit,
   recordInference,
@@ -29,6 +30,7 @@ import {
   resetTelemetryForTests,
   resolvedResultBytes,
   setActiveTier,
+  turnSnapshot,
 } from "../lib/telemetry.ts";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -208,6 +210,7 @@ test("telemetry stores blocked and deduped rows and a turn cost line", () => {
   process.env.PI_BUILD_TELEMETRY_DB = path.join(dir, "telemetry.db");
   resetTelemetryForTests();
   beginUserTurn("session-1", "hello");
+  const turnId = turnSnapshot().turnId;
   recordToolCall({
     toolName: "read",
     arguments: { path: ".agent/notes/x.md" },
@@ -216,6 +219,7 @@ test("telemetry stores blocked and deduped rows and a turn cost line", () => {
     outcome: "blocked",
     blockedBy: "memory-gate",
   });
+  bumpLoopIndex();
   recordToolCall({
     toolName: "read",
     arguments: { path: "src/a.ts" },
@@ -229,12 +233,14 @@ test("telemetry stores blocked and deduped rows and a turn cost line", () => {
   assert.match(line ?? "", /tier=work calls=1 prompt=100 cache=25\.0% completion=10 reasoning=40\.0% turn=\$0\.5000 session=\$0\.5000/);
   assert.equal(resolvedResultBytes({ resultBytes: 18 }, [{ text: "x".repeat(100) }]), 18);
   const db = new DatabaseSync(process.env.PI_BUILD_TELEMETRY_DB);
-  const rows = db.prepare("SELECT arguments, path, result_bytes, outcome, blocked_by FROM tool_calls ORDER BY id").all() as {
+  const rows = db.prepare("SELECT arguments, path, result_bytes, outcome, blocked_by, turn_id, loop_index FROM tool_calls ORDER BY id").all() as {
     arguments: string;
     path: string;
     result_bytes: number;
     outcome: string;
     blocked_by: string;
+    turn_id: string;
+    loop_index: number;
   }[];
   assert.equal(rows.length, 2);
   assert.match(rows[0].arguments, /\.agent\/notes\/x\.md/);
@@ -242,8 +248,12 @@ test("telemetry stores blocked and deduped rows and a turn cost line", () => {
   assert.equal(rows[0].result_bytes, 40);
   assert.equal(rows[0].outcome, "blocked");
   assert.equal(rows[0].blocked_by, "memory-gate");
+  assert.equal(rows[0].turn_id, turnId);
+  assert.equal(rows[0].loop_index, 0);
   assert.equal(rows[1].outcome, "deduped");
   assert.equal(rows[1].result_bytes, 18);
+  assert.equal(rows[1].turn_id, turnId);
+  assert.equal(rows[1].loop_index, 1);
   db.close();
   delete process.env.PI_BUILD_TELEMETRY_DB;
   resetTelemetryForTests();
