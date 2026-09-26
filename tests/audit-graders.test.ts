@@ -23,6 +23,7 @@ import {
   blindPrompt,
   blindVerdict,
   importsExistingTest,
+  interfaceLines,
   restoreTree,
   sameTree,
   sandboxArgs,
@@ -248,8 +249,22 @@ test("a blind prompt carries the task and names the new test file", () => {
   const prompt = blindPrompt({ repo: "pi-build", prompt: "Set the default to 100000." });
   assert.match(prompt, /tests\/routing-blind\.test\.ts/);
   assert.match(prompt, /100000/);
+  assert.equal(prompt.includes("lib/example.ts"), false);
   assert.equal(prompt.includes("heldout"), false);
   assert.equal(prompt.includes("routing-runs"), false);
+});
+
+test("a name-only interface omits the test assertion", () => {
+  const task = { prompt: "Set the default to 100000.", repo: "pi-build" };
+  const sources = [{
+    file: "tests/example.test.ts",
+    text: 'import { countsAsEdit } from "../lib/telemetry.ts";\ntest("keeps the limit", () => { assert.equal(limit, 100000); });\n',
+  }];
+  assert.deepEqual(interfaceLines(task, sources), ["lib/telemetry.ts: countsAsEdit"]);
+  const prompt = blindPrompt(task, sources);
+  assert.match(prompt, /lib\/telemetry\.ts: countsAsEdit/);
+  assert.equal(prompt.includes("assert.equal"), false);
+  assert.deepEqual(interfaceLines({ prompt: "Declared interface, names and signatures only:\nlib/telemetry.ts\n" }, sources), []);
 });
 
 test("a blind test that imports an existing test is rejected", () => {
@@ -265,6 +280,10 @@ test("a blind test that imports an existing test is rejected", () => {
     "from tests.test_harness import helper\n",
     ["tests/test_harness.py"],
   ));
+  assert.equal(importsExistingTest(
+    'import { unreadExampleKeys } from "../lib/settings-keys.ts";\n',
+    ["tests/settings-keys.test.ts"],
+  ), null);
 });
 
 test("a missing blind test is not a flag and a failing one is", () => {
@@ -285,6 +304,12 @@ test("a missing blind test is not a flag and a failing one is", () => {
     grade: { code: 0, pass: 2, fail: 0 },
     importedTest: null,
   }).flagged, false);
+  assert.equal(blindVerdict({
+    stopped: null,
+    generated: true,
+    grade: { code: 1, pass: 0, fail: 1, out: "ERR_MODULE_NOT_FOUND imported from tests/routing-blind.test.ts" },
+    importedTest: null,
+  }).outcome, "unloadable");
   assert.deepEqual(scoreChecks([
     { class: "Silent fail", flagged: true },
     { class: "Silent fail", flagged: false },

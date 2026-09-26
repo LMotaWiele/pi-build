@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { extractReferences, splitSources } from "./audit-graders.mjs";
 import { piArgs } from "./run-arm.mjs";
 
 const REPO = path.resolve(import.meta.dirname, "..");
@@ -42,21 +43,47 @@ const FILE_BINDS = [
   ["/home/george-contis/src/pi-build/agent/AGENTS.md", "/home/george-contis/.pi/agent/AGENTS.md"],
 ];
 
-export function blindPrompt(task) {
+export function interfaceLines(task, sources) {
+  if (!task?.prompt || task.prompt.includes("Declared interface")) return [];
+  let list = sources;
+  if (!list) {
+    if (!task.requirement_split) return [];
+    list = [...splitSources(task, "visible"), ...splitSources(task, "hidden")];
+  }
+  const byModule = new Map();
+  for (const source of list) {
+    for (const ref of extractReferences(source.text, source.file)) {
+      const modulePath = ref.resolved?.[0];
+      if (!modulePath || /\.test\.ts$/.test(modulePath) || /\/test_/.test(modulePath)) continue;
+      if (!byModule.has(modulePath)) byModule.set(modulePath, new Set());
+      if (ref.kind === "symbol") byModule.get(modulePath).add(ref.name);
+    }
+  }
+  return [...byModule.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([modulePath, names]) => {
+    const listNames = [...names].sort();
+    return listNames.length ? `${modulePath}: ${listNames.join(", ")}` : modulePath;
+  });
+}
+
+export function blindPrompt(task, sources) {
   const rel = BLIND_REL[task.repo];
   const python = task.repo === "agent-orchestration-harness";
-  return [
+  const lines = interfaceLines(task, sources);
+  const parts = [
     "Write one test file and nothing else.",
     `Create ${rel} and do not create any other file.`,
     "The implementation is not in this directory. Do not search, read, or run a command.",
     python
-      ? "Use pytest. Import the declared package as agent_orchestration_harness. Do not import any other test module."
-      : "Use node:test and node:assert/strict. From this file, import lib/example.ts as ../lib/example.ts, with the .ts suffix. Do not import any other test module.",
-    "Assert only behaviour the prompt states, through names the prompt declares. Do not add a requirement the prompt does not state. Do not invent a number.",
+      ? "Use pytest. Import only names listed in the prompt or the declared interface, from the agent_orchestration_harness package. Do not invent a module. Do not import a test module."
+      : "Use node:test and node:assert/strict. Import only modules named in the prompt or the declared interface. The import path is relative to this test file and keeps its .ts suffix: drop one directory to leave tests/. Do not invent a module path. Do not import a test file.",
+    "Assert only behaviour the prompt states, through names it declares. Do not add a requirement the prompt does not state. Do not invent a number.",
     "Do not run the test.",
-    "",
-    task.prompt,
-  ].join("\n");
+  ];
+  if (lines.length) {
+    parts.push("", "Declared interface, names only:", ...lines);
+  }
+  parts.push("", task.prompt);
+  return parts.join("\n");
 }
 
 export function sandboxArgs(genDir) {
@@ -98,8 +125,11 @@ export function importsExistingTest(text, files) {
     if (!/\b(import|from|require)\b/.test(line)) continue;
     for (const base of bases) {
       if (line.includes(base)) return line.trim();
-      const stem = base.replace(/\.py$/, "").replace(/\.test\.ts$/, "");
-      if (stem.length >= 8 && line.includes(stem)) return line.trim();
+      if (!base.endsWith(".py")) continue;
+      const stem = base.replace(/\.py$/, "");
+      if (stem.length < 8) continue;
+      const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(?:^|[^\\w])${escaped}(?:[^\\w]|$)`).test(line)) return line.trim();
     }
   }
   return null;
@@ -115,6 +145,10 @@ export function blindVerdict({ stopped, generated, grade, importedTest }) {
   if (stopped) return { flagged: false, outcome: "censored" };
   if (importedTest) return { flagged: false, outcome: "imports-tests" };
   if (!generated) return { flagged: false, outcome: "missing" };
+  if (grade && /ERR_MODULE_NOT_FOUND|ModuleNotFoundError/.test(grade.out || "")
+    && /routing-blind\.test\.ts|test_routing_blind\.py/.test(grade.out || "")) {
+    return { flagged: false, outcome: "unloadable" };
+  }
   if (!grade || (grade.pass === 0 && grade.fail === 0 && grade.code === 0)) {
     return { flagged: false, outcome: generated && grade ? "empty" : "ungraded" };
   }
