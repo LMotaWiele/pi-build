@@ -267,3 +267,30 @@ Silent fails flagged 1/2. Passes flagged 1/2. Provider cost 0.164960, plus the p
 No adoption row fires. C1 through C3 stay under 80% recall or over 20% false alarms. C4 flags one of the two silent fails it reviewed. C2's recall is 4 of 6, and it flags 4 of 5 passes. Section 13.5 keeps Phase C.
 
 Phase C Terra, at medium thinking, on four Luna failures of different kinds: `bd51f93` (loud, visible checks fail), `78ce7cb` (silent, single file, no checker flagged it), `59c9121` (silent, hook trace), `aoh-c40f118` (silent, the other repository). `aoh-fb5d493` already passed on Terra. The phase stops at $10 across Terra and Sol. Sol runs only on a Terra fail from this four, and only with whatever budget remains.
+
+## Section 12 Phase C — terra
+
+Run trees are under `/home/george-contis/var/routing-runs/terra`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| 78ce7cb | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.21703520 | 0.21703520 | 15 | 129.257 | 6 |  |
+| bd51f93 | Silent fail | 5 pass, 0 fail | 3 pass, 1 fail | 0.61825000 | 0.61825000 | 42 | 286.436 | 16 |  |
+| 59c9121 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.26184360 | 0.26184360 | 17 | 182.279 | 6 |  |
+| aoh-c40f118 | censored | 4 pass, 0 fail | 3 pass, 0 fail | 0.17406120 | 0.17406120 | 14 | 100.082 | 14 | pin |
+
+## Section 12 Phase C — sol
+
+Run trees are under `/home/george-contis/var/routing-runs/sol`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| 78ce7cb | Loud fail | 0 pass, 2 fail | 1 pass, 1 fail | 0.76392240 | 0.58686800 | 16 | 357.146 | 11 |  |
+| bd51f93 | Silent fail | 5 pass, 0 fail | 3 pass, 1 fail | 1.88045280 | 1.88045280 | 44 | 724.712 | 20 |  |
+| 59c9121 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 2.58930240 | 2.27710640 | 41 | 623.036 | 17 |  |
+
+Terra at medium thinking, one user message, model gpt-5.6-terra. Three silent fails and one pin censor. Provider cost 1.271190. `aoh-c40f118` stopped when bounds retried at Sol after three consecutive tool failures, so it has no pass or fail label and was not sent to Sol.
+
+Sol at high thinking, cap 2.70, on the three silent fails. One user message each, model gpt-5.6-sol. The cap did not fire. `bd51f93` silent fail, `78ce7cb` loud fail, `59c9121` silent fail. Provider cost 5.233678. `78ce7cb` includes 7 child calls and `59c9121` includes 13, all on gpt-5.6-sol. Phase total 6.504868, under 10.
+
+No task passed. The handoff rerun is skipped. `bd51f93` was loud on Luna and silent on Terra and on Sol. `78ce7cb` was silent on Luna and on Terra, and loud on Sol.
