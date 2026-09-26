@@ -31,7 +31,7 @@ import {
   snapshotTree,
 } from "../scripts/check-c3.mjs";
 import { C4_IDS, reviewPrompt, reviewVerdict } from "../scripts/check-c4.mjs";
-import { classify, piArgs, queryDb } from "../scripts/run-arm.mjs";
+import { classify, piArgs, queryDb, sectionHeader } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
 
@@ -363,6 +363,16 @@ test("grading a blind test restores the worktree", () => {
   assert.equal(fs.existsSync(path.join(dir, "tests-new.ts")), false);
   assert.equal(sameTree(before, snapshotTree(dir)), true);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a later arm can write its own matrix section", () => {
+  const previous = process.env.RUN_ARM_SECTION;
+  delete process.env.RUN_ARM_SECTION;
+  assert.equal(sectionHeader("terra"), "## Section 12 Phase B — terra");
+  process.env.RUN_ARM_SECTION = "## Section 12 Phase C — terra";
+  assert.equal(sectionHeader("terra"), "## Section 12 Phase C — terra");
+  if (previous == null) delete process.env.RUN_ARM_SECTION;
+  else process.env.RUN_ARM_SECTION = previous;
 });
 
 test("a Sol review flags a missing requirement and ignores other prose", () => {

@@ -248,3 +248,22 @@ Names only. Silent fails flagged 4/6. Passes flagged 3/5. Loud fails flagged 2/3
 Signatures. The appendix carries each function signature from the commit, and the prompt forbids an invented field, callback name, or file path. A class body stays out. Silent fails flagged 0/6. Passes flagged 2/5. Loud fails flagged 2/3. Provider cost 0.024568. `a0043ca` still expects the queue error to reject. `4704b4f` still calls the injector with an empty object. `aoh-c40f118` is unloadable again.
 
 C2 together with the signature pass flags 4 of 6 silent fails and 4 of 5 passes. C2 together with the names-only pass flags 5 of 6 silent fails and 5 of 5 passes. No combination reaches 80% recall with false alarms under 20%. C4 reviews the two silent fails those checkers left, `78ce7cb` and `59c9121`, and the first two held-out passes in the Phase B Luna table, `a0043ca` and `4384c58`.
+
+## Section 13 — checkers, C4
+
+Sol at high thinking, one user message, the checklist and the added text, in a sandbox that cannot see either repository. The sample is the two silent fails C1, C2, and the signature-constrained C3 all left, plus the first two held-out passes.
+
+| Task | Class | Outcome | Flagged | Missing | Present | Provider $ |
+|---|---|---|---|---|---|---|
+| 78ce7cb | Silent fail | present | no | 0 | 1 | 0.042515 |
+| 59c9121 | Silent fail | missing | yes | 1 | 5 | 0.046560 |
+| a0043ca | Pass | missing | yes | 1 | 0 | 0.031050 |
+| 4384c58 | Pass | present | no | 0 | 6 | 0.044835 |
+
+Silent fails flagged 1/2. Passes flagged 1/2. Provider cost 0.164960, plus the probe 0.030175. Each review was one round on gpt-5.6-sol.
+
+`78ce7cb` has one requirement and Sol marked it present. Its hidden tests failed. `59c9121` marked the hook-trace requirement missing, and its hidden tests failed. `a0043ca` marked its only requirement missing, and its hidden tests passed. Of the two requirements Sol marked missing, one task failed held-out.
+
+No adoption row fires. C1 through C3 stay under 80% recall or over 20% false alarms. C4 flags one of the two silent fails it reviewed. C2's recall is 4 of 6, and it flags 4 of 5 passes. Section 13.5 keeps Phase C.
+
+Phase C Terra, at medium thinking, on four Luna failures of different kinds: `bd51f93` (loud, visible checks fail), `78ce7cb` (silent, single file, no checker flagged it), `59c9121` (silent, hook trace), `aoh-c40f118` (silent, the other repository). `aoh-fb5d493` already passed on Terra. The phase stops at $10 across Terra and Sol. Sol runs only on a Terra fail from this four, and only with whatever budget remains.

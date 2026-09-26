@@ -236,6 +236,10 @@ function gradeSide(work, task, side) {
   return { sources, graded };
 }
 
+export function sectionHeader(armName) {
+  return process.env.RUN_ARM_SECTION || `## Section 12 Phase B — ${armName}`;
+}
+
 function appendRow(armName, row) {
   const lock = `${MATRIX}.lock`;
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -249,7 +253,7 @@ function appendRow(armName, row) {
   }
   try {
     let text = fs.readFileSync(MATRIX, "utf8");
-    const header = `## Section 12 Phase B — ${armName}`;
+    const header = sectionHeader(armName);
     if (!text.includes(header)) {
       const deviation = armName === "luna"
         ? "The first-pass trees were absent and the grader split changed, so this arm re-runs every surviving task, including prompts that did not change. "
@@ -370,7 +374,10 @@ async function main() {
   const armName = process.argv[2];
   const listPath = process.argv[3];
   const gradeOnly = process.env.RUN_ARM_GRADE_ONLY === "1";
-  const arm = ARMS[armName];
+  const base = ARMS[armName];
+  const arm = base && process.env.RUN_ARM_CAP
+    ? { ...base, cap: Number(process.env.RUN_ARM_CAP) }
+    : base;
   if (!arm || !listPath) {
     process.stderr.write("usage: scripts/run-arm.sh <luna|sol|terra|terra-low> <task-list>\n");
     process.exitCode = 2;
