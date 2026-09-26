@@ -16,7 +16,7 @@ import {
   resolveTs,
   signatureOf,
 } from "../scripts/audit-graders.mjs";
-import { classify, queryDb } from "../scripts/run-arm.mjs";
+import { classify, piArgs, queryDb } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
 
@@ -167,6 +167,17 @@ test("a locked telemetry database returns null instead of throwing", () => {
   assert.equal(open.cost, 0);
   assert.deepEqual(open.models, []);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("model, thinking, and session flags come before the end of options", () => {
+  const args = piArgs("do the task", { model: "openai-codex/gpt-5.6-terra", thinking: "medium" }, "/tmp/sessions");
+  const end = args.indexOf("--");
+  assert.ok(end > 0);
+  assert.ok(args.indexOf("--model") < end);
+  assert.ok(args.indexOf("--thinking") < end);
+  assert.ok(args.indexOf("--approve") < end);
+  assert.ok(args.indexOf("--session-dir") < end);
+  assert.deepEqual(args.slice(end), ["--", "do the task"]);
 });
 
 test("a stopped run is censored and a visible pass with a hidden fail is silent", () => {

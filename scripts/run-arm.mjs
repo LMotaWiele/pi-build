@@ -173,9 +173,15 @@ function killGroup(child) {
   }, 5000).unref();
 }
 
-function runPi(task, arm, work, dbPath, sessionDir, logPath) {
-  const args = ["-p", "--", task.prompt, "--model", arm.model, "--approve", "--session-dir", sessionDir];
+export function piArgs(prompt, arm, sessionDir) {
+  const args = ["-p", "--model", arm.model, "--approve", "--session-dir", sessionDir];
   if (arm.thinking) args.push("--thinking", arm.thinking);
+  args.push("--", prompt);
+  return args;
+}
+
+function runPi(task, arm, work, dbPath, sessionDir, logPath) {
+  const args = piArgs(task.prompt, arm, sessionDir);
   const env = { ...process.env };
   delete env.PI_OFFLINE;
   delete env.SMART_ROUTER_DATASET;

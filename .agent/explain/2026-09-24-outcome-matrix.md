@@ -132,9 +132,11 @@ Eight prompts now declare the path and the signatures the held-out tests import:
 
 `9e26310` does not survive. Its held-out change is one assertion inside an existing test, so it cannot fail on a visible half and a hidden half at once. Sixteen tasks remain. For each one, the hidden tests fail at the parent and pass at the commit, the interface audit reports nothing undeclared, and the visible half fails at the parent. The split is recorded on each task before any re-run.
 
-## Section 12 Phase B — luna
+## Invalid launch — luna flags as messages
 
-The first-pass trees were absent and the grader split changed, so this arm re-runs every surviving task, including prompts that did not change. Run trees are under `/home/george-contis/var/routing-runs/luna`. A cost-cap stop is censored.
+The runner placed `--model`, `--approve`, and `--session-dir` after `--`. Pi treated each of those as another user message. Sessions started on gpt-5.6-luna at thinking minimal, and the hidden-file restore still ran, but this is not the pinned arm. The pinned re-run is the later luna section. Provider cost of this launch was 0.431110.
+
+The first-pass trees were absent and the grader split changed, so the re-run covers every surviving task, including prompts that did not change. Run trees are under `/home/george-contis/var/routing-runs/luna`. A cost-cap stop is censored.
 
 | Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
 |---|---|---|---|---|---|---|---|---|---|
@@ -156,3 +158,39 @@ The first-pass trees were absent and the grader split changed, so this arm re-ru
 | s13-hard | Silent fail | 4 pass, 0 fail | 2 pass, 2 fail | 0.04395940 | 0.03872780 | 30 | 167.320 | 4 |  |
 
 Sixteen tasks. 5 pass, 2 loud fail, 9 silent fail. Provider cost 0.431110, parent cost 0.403219, 395 rounds. Every inference was gpt-5.6-luna and none stopped. Each hidden file's hash was recorded before the overlay, and none matched the declared hidden text.
+
+## Invalid launch — terra flags as messages
+
+Same flag placement. The pin check stopped both sessions because the model was gpt-5.6-luna. These rows are not a Terra result.
+
+Run trees are under `/home/george-contis/var/routing-runs/terra`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| aoh-5cbfb21 | censored | 0 pass, 6 fail | 1 pass, 4 fail | 0.00124968 | 0.00124968 | 2 | 15.031 | 0 | pin |
+| aoh-fb5d493 | censored | 3 pass, 2 fail | 2 pass, 2 fail | 0.00180000 | 0.00180000 | 1 | 15.315 | 1 | pin |
+
+## Section 12 Phase B — S2
+
+One reworded question, one call per surviving task, labels frozen before the calls. A numbered spec section or stage counts. A section key does not. `s13-hard` is the only yes. `9e26310` is out. The other twelve questions were not re-asked, and 64 of 77 stands.
+
+16 of 16 matched. Provider cost 0.000654. The largest state was 1722 tokens.
+
+| Task | Label | noul | Match |
+|---|---|---|---|
+| ab12c94 | no | 0.03 | yes |
+| bd51f93 | no | 0.06 | yes |
+| a0043ca | no | 0.04 | yes |
+| 78ce7cb | no | 0.04 | yes |
+| 4384c58 | no | 0.06 | yes |
+| 59c9121 | no | 0.05 | yes |
+| a2c7c72 | no | 0.04 | yes |
+| 4704b4f | no | 0.05 | yes |
+| 690b685 | no | 0.06 | yes |
+| 49d5a83 | no | 0.07 | yes |
+| s6-benchmark | no | 0.05 | yes |
+| s13-hard | yes | 0.97 | yes |
+| aoh-6ba7e7e | no | 0.04 | yes |
+| aoh-5cbfb21 | no | 0.04 | yes |
+| aoh-fb5d493 | no | 0.06 | yes |
+| aoh-c40f118 | no | 0.03 | yes |
