@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -18,6 +19,16 @@ import {
 } from "../scripts/audit-graders.mjs";
 import { addedText, checklistOf, symbolsOf, uncovered } from "../scripts/check-c1.mjs";
 import { coverageState, requirementsOf } from "../scripts/check-c2.mjs";
+import {
+  blindPrompt,
+  blindVerdict,
+  importsExistingTest,
+  restoreTree,
+  sameTree,
+  sandboxArgs,
+  scoreChecks,
+  snapshotTree,
+} from "../scripts/check-c3.mjs";
 import { classify, piArgs, queryDb } from "../scripts/run-arm.mjs";
 
 const suitePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "routing-suite/tasks.jsonl");
@@ -218,6 +229,91 @@ test("a stopped run is censored and a visible pass with a hidden fail is silent"
   assert.equal(classify(pass, fail, null), "Silent fail");
   assert.equal(classify(fail, pass, null), "Odd");
   assert.equal(classify(pass, fail, "cost-cap"), "censored");
+});
+
+test("the sandbox binds credential files and hides the repositories", () => {
+  const args = sandboxArgs("/tmp/c3-gen");
+  const sources = [];
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--ro-bind" || args[i] === "--bind") sources.push(args[i + 1]);
+  }
+  assert.ok(sources.includes("/home/george-contis/.pi/agent/auth.json"));
+  assert.equal(sources.includes("/home/george-contis/src/pi-build"), false);
+  assert.equal(sources.includes("/home/george-contis/Documents/agent-orchestration-harness"), false);
+  assert.equal(sources.some((source) => source.includes("routing-runs")), false);
+  assert.ok(args.includes("--clearenv"));
+});
+
+test("a blind prompt carries the task and names the new test file", () => {
+  const prompt = blindPrompt({ repo: "pi-build", prompt: "Set the default to 100000." });
+  assert.match(prompt, /tests\/routing-blind\.test\.ts/);
+  assert.match(prompt, /100000/);
+  assert.equal(prompt.includes("heldout"), false);
+  assert.equal(prompt.includes("routing-runs"), false);
+});
+
+test("a blind test that imports an existing test is rejected", () => {
+  assert.ok(importsExistingTest(
+    'import { x } from "../tests/read-guard.test.ts";\n',
+    ["tests/read-guard.test.ts"],
+  ));
+  assert.equal(importsExistingTest(
+    'import { countsAsEdit } from "../lib/telemetry.ts";\n',
+    ["tests/read-guard.test.ts"],
+  ), null);
+  assert.ok(importsExistingTest(
+    "from tests.test_harness import helper\n",
+    ["tests/test_harness.py"],
+  ));
+});
+
+test("a missing blind test is not a flag and a failing one is", () => {
+  assert.deepEqual(blindVerdict({ stopped: null, generated: false, grade: null, importedTest: null }), {
+    flagged: false,
+    outcome: "missing",
+  });
+  assert.equal(blindVerdict({ stopped: "pin", generated: true, grade: null, importedTest: null }).flagged, false);
+  assert.equal(blindVerdict({
+    stopped: null,
+    generated: true,
+    grade: { code: 1, pass: 0, fail: 1 },
+    importedTest: null,
+  }).flagged, true);
+  assert.equal(blindVerdict({
+    stopped: null,
+    generated: true,
+    grade: { code: 0, pass: 2, fail: 0 },
+    importedTest: null,
+  }).flagged, false);
+  assert.deepEqual(scoreChecks([
+    { class: "Silent fail", flagged: true },
+    { class: "Silent fail", flagged: false },
+    { class: "Pass", flagged: false },
+  ]), { silent: [1, 2], pass: [0, 1], loud: [0, 0] });
+});
+
+test("grading a blind test restores the worktree", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "c3-restore-"));
+  const git = ["-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false"];
+  execFileSync("git", ["init"], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  fs.writeFileSync(path.join(dir, "kept.ts"), "export const n = 1;\n");
+  fs.writeFileSync(path.join(dir, "clean.ts"), "export const c = 1;\n");
+  execFileSync("git", ["-C", dir, ...git, "add", "kept.ts", "clean.ts"], { stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["-C", dir, ...git, "commit", "-m", "init"], { stdio: ["ignore", "pipe", "pipe"] });
+  fs.writeFileSync(path.join(dir, "kept.ts"), "export const n = 2;\n");
+  fs.writeFileSync(path.join(dir, "extra.ts"), "export const extra = 1;\n");
+  const before = snapshotTree(dir);
+  fs.writeFileSync(path.join(dir, "kept.ts"), "export const n = 3;\n");
+  fs.writeFileSync(path.join(dir, "clean.ts"), "export const c = 9;\n");
+  fs.rmSync(path.join(dir, "extra.ts"));
+  fs.writeFileSync(path.join(dir, "tests-new.ts"), "nope\n");
+  restoreTree(dir, before);
+  assert.equal(fs.readFileSync(path.join(dir, "kept.ts"), "utf8"), "export const n = 2;\n");
+  assert.equal(fs.readFileSync(path.join(dir, "clean.ts"), "utf8"), "export const c = 1;\n");
+  assert.equal(fs.readFileSync(path.join(dir, "extra.ts"), "utf8"), "export const extra = 1;\n");
+  assert.equal(fs.existsSync(path.join(dir, "tests-new.ts")), false);
+  assert.equal(sameTree(before, snapshotTree(dir)), true);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("a signature keeps a parameter type and a return type", () => {
