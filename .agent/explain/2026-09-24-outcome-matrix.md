@@ -131,3 +131,28 @@ The first-pass trees under `/tmp/routing-s2`, `/tmp/routing-s3`, `/tmp/routing-s
 Eight prompts now declare the path and the signatures the held-out tests import: `bd51f93`, `4384c58`, `59c9121`, `a2c7c72`, `690b685`, `49d5a83`, `s13-hard`, `aoh-c40f118`. The undeclared surface at `4384c58` is the explain one-shot, not `lib/score-ab.ts`. That file is not imported by the graded held-out test.
 
 `9e26310` does not survive. Its held-out change is one assertion inside an existing test, so it cannot fail on a visible half and a hidden half at once. Sixteen tasks remain. For each one, the hidden tests fail at the parent and pass at the commit, the interface audit reports nothing undeclared, and the visible half fails at the parent. The split is recorded on each task before any re-run.
+
+## Section 12 Phase B — luna
+
+The first-pass trees were absent and the grader split changed, so this arm re-runs every surviving task, including prompts that did not change. Run trees are under `/home/george-contis/var/routing-runs/luna`. A cost-cap stop is censored.
+
+| Task | Class | Visible | Held-out | Provider $ | Parent $ | Rounds | Wall s | Reads | Stop |
+|---|---|---|---|---|---|---|---|---|---|
+| ab12c94 | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.01903228 | 0.01903228 | 19 | 79.941 | 3 |  |
+| a0043ca | Pass | 2 pass, 0 fail | 1 pass, 0 fail | 0.02483892 | 0.02072988 | 18 | 100.350 | 1 |  |
+| bd51f93 | Loud fail | 3 pass, 2 fail | 2 pass, 2 fail | 0.03964372 | 0.03603696 | 33 | 180.001 | 12 |  |
+| 4384c58 | Pass | 2 pass, 0 fail | 1 pass, 0 fail | 0.02336400 | 0.02336400 | 26 | 145.253 | 5 |  |
+| 78ce7cb | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.03915544 | 0.03387148 | 33 | 172.999 | 4 |  |
+| 59c9121 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.02094300 | 0.01937652 | 22 | 123.931 | 1 |  |
+| 4704b4f | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.01942544 | 0.01133276 | 19 | 132.488 | 2 |  |
+| a2c7c72 | Silent fail | 2 pass, 0 fail | 1 pass, 1 fail | 0.03787636 | 0.03787636 | 32 | 173.360 | 4 |  |
+| 690b685 | Silent fail | 1 pass, 0 fail | 0 pass, 1 fail | 0.03193532 | 0.03193532 | 29 | 161.064 | 1 |  |
+| 49d5a83 | Pass | 1 pass, 0 fail | 1 pass, 0 fail | 0.01871516 | 0.01871516 | 19 | 92.057 | 10 |  |
+| aoh-6ba7e7e | Silent fail | 5 pass, 0 fail | 7 pass, 1 fail | 0.01071784 | 0.01071784 | 16 | 88.659 | 3 |  |
+| s6-benchmark | Silent fail | 3 pass, 0 fail | 2 pass, 1 fail | 0.04249180 | 0.04249180 | 34 | 150.393 | 3 |  |
+| aoh-5cbfb21 | Loud fail | 4 pass, 2 fail | 3 pass, 2 fail | 0.01886644 | 0.01886644 | 24 | 115.994 | 6 |  |
+| aoh-fb5d493 | Silent fail | 5 pass, 0 fail | 3 pass, 1 fail | 0.01894980 | 0.01894980 | 20 | 103.594 | 1 |  |
+| aoh-c40f118 | Silent fail | 4 pass, 0 fail | 2 pass, 1 fail | 0.02119508 | 0.02119508 | 21 | 102.764 | 6 |  |
+| s13-hard | Silent fail | 4 pass, 0 fail | 2 pass, 2 fail | 0.04395940 | 0.03872780 | 30 | 167.320 | 4 |  |
+
+Sixteen tasks. 5 pass, 2 loud fail, 9 silent fail. Provider cost 0.431110, parent cost 0.403219, 395 rounds. Every inference was gpt-5.6-luna and none stopped. Each hidden file's hash was recorded before the overlay, and none matched the declared hidden text.
