@@ -65,6 +65,7 @@ export function sandboxArgs(genDir) {
     "--ro-bind", "/lib", "/lib",
     "--ro-bind", "/lib64", "/lib64",
     "--ro-bind", "/etc", "/etc",
+    "--ro-bind", "/run", "/run",
     "--proc", "/proc",
     "--dev", "/dev",
     "--tmpfs", "/tmp",
@@ -73,6 +74,8 @@ export function sandboxArgs(genDir) {
     "--ro-bind", "/home/george-contis/.nvm", "/home/george-contis/.nvm",
     "--dir", "/home/george-contis/.pi",
     "--dir", "/home/george-contis/.pi/agent",
+    "--ro-bind", "/home/george-contis/.pi/agent/git", "/home/george-contis/.pi/agent/git",
+    "--ro-bind", "/home/george-contis/.pi/agent/npm", "/home/george-contis/.pi/agent/npm",
   ];
   for (const [source, dest] of FILE_BINDS) args.push("--ro-bind", source, dest);
   args.push(
