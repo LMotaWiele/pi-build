@@ -64,9 +64,9 @@ export function batteryQuestions(): Record<string, QuestionSpec> {
       "No new file in those directories is named.",
     ),
     S2: bool(
-      "Does the task name more than one spec stage or section?",
-      "The prompt names two or more stages or numbered sections.",
-      "The prompt names one stage or section, or none.",
+      "Does the prompt name two or more numbered spec sections or stages, such as §3 and §4? A settings section key, or the word section with no number, does not count.",
+      "The prompt names two or more numbered spec sections or stages, such as §3 and §4.",
+      "The prompt names fewer than two numbered spec sections or stages. A section key or an unnumbered section does not count.",
     ),
     S3: bool(
       "Does the task use an API or package that is not used in any implicated file?",

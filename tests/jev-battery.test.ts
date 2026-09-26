@@ -7,6 +7,13 @@ test("the battery is the thirteen questions and the five deterministic ids", () 
   const names = Object.keys(batteryQuestions());
   assert.deepEqual(names, ["V1", "V2", "V3", "V4", "B1", "B2", "B3", "J1", "J2", "S1", "S2", "S3", "R1"]);
   assert.deepEqual([...DETERMINISTIC_IDS], ["S1", "S2", "B1", "B2", "R1"]);
+  const s2 = batteryQuestions().S2;
+  assert.equal(s2.kind, "bool");
+  if (s2.kind === "bool") {
+    assert.match(s2.instructions, /numbered spec sections or stages/);
+    assert.match(s2.instructions, /§3 and §4/);
+    assert.match(s2.no, /section key/);
+  }
 });
 
 test("a transport failure returns the safe defaults", async () => {
