@@ -80,7 +80,9 @@ function verifyCount(specText) {
   const parts = specText.split(/^## /m);
   const section = [...parts].reverse().find((part) => /^(\d+\.\s+)?Verify\b/.test(part));
   if (!section) return 0;
-  const nums = [...section.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+  // The heading is "8. Verify" after the "## " split. Its number is the section, not an item.
+  const body = section.replace(/^[^\n]*\n/, "");
+  const nums = [...body.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
   return nums.length ? Math.max(...nums) : 0;
 }
 
