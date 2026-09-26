@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { extractReferences, splitSources } from "./audit-graders.mjs";
+import { extractReferences, signatureOf, splitSources } from "./audit-graders.mjs";
 import { piArgs } from "./run-arm.mjs";
 
 const REPO = path.resolve(import.meta.dirname, "..");
@@ -43,6 +43,32 @@ const FILE_BINDS = [
   ["/home/george-contis/src/pi-build/agent/AGENTS.md", "/home/george-contis/.pi/agent/AGENTS.md"],
 ];
 
+function moduleText(task, modulePath) {
+  if (task?.module_text && Object.hasOwn(task.module_text, modulePath)) return task.module_text[modulePath];
+  if (!task?.repo_path || !task?.commit_sha) return "";
+  try {
+    return execFileSync("git", ["-C", task.repo_path, "show", `${task.commit_sha}:${modulePath}`], {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch {
+    return "";
+  }
+}
+
+function declaredName(task, modulePath, name) {
+  const raw = signatureOf(moduleText(task, modulePath), name).replace(/\s+/g, " ").trim();
+  if (!raw) return name;
+  const stripped = raw
+    .replace(/^export\s+/, "")
+    .replace(/^(?:async\s+)?(?:function|const|let|class|type|interface|enum|def)\s+/, "");
+  if (!stripped.startsWith(name) || stripped.length > 500) return name;
+  // A class or enum body is the implementation. A function header or a type is the surface.
+  if (/\b(?:class|enum)\b/.test(raw) || /\bthis\.|\bprivate\b|\bsuper\(/.test(stripped)) return name;
+  return stripped;
+}
+
 export function interfaceLines(task, sources) {
   if (!task?.prompt || task.prompt.includes("Declared interface")) return [];
   let list = sources;
@@ -62,7 +88,7 @@ export function interfaceLines(task, sources) {
     }
   }
   return [...byModule.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([modulePath, names]) => {
-    const listNames = [...names].sort();
+    const listNames = [...names].sort().map((name) => declaredName(task, modulePath, name));
     return listNames.length ? `${modulePath}: ${listNames.join(", ")}` : modulePath;
   });
 }
@@ -79,10 +105,11 @@ export function blindPrompt(task, sources) {
       ? "Use pytest. Import only names listed in the prompt or the declared interface, from the agent_orchestration_harness package. Do not invent a module. Do not import a test module."
       : "Use node:test and node:assert/strict. Import only modules named in the prompt or the declared interface. The import path is relative to this test file and keeps its .ts suffix: drop one directory to leave tests/. Do not invent a module path. Do not import a test file.",
     "Assert only behaviour the prompt states, through names it declares. Do not add a requirement the prompt does not state. Do not invent a number.",
+    "Call a function only with the argument types written in its signature. Do not invent a field, a callback name, or a file path. If the prompt does not state the argument, do not call that function.",
     "Do not run the test.",
   ];
   if (lines.length) {
-    parts.push("", "Declared interface, names only:", ...lines);
+    parts.push("", "Declared interface, names and signatures only:", ...lines);
   }
   parts.push("", task.prompt);
   return parts.join("\n");

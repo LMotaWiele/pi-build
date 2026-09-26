@@ -266,7 +266,25 @@ test("a name-only interface omits the test assertion", () => {
     text: 'const tools = require("./dist/core/tools/index.js");\nimport { write_full_run } from "./conftest.py";\n',
   }]);
   assert.deepEqual(withHelper, ["lib/telemetry.ts: countsAsEdit"]);
+  const signed = interfaceLines({
+    ...task,
+    module_text: {
+      "lib/telemetry.ts": "export function countsAsEdit(name: string): boolean {\n  return true;\n}\n",
+    },
+  }, sources);
+  assert.deepEqual(signed, ["lib/telemetry.ts: countsAsEdit(name: string): boolean"]);
+  const classLines = interfaceLines({
+    ...task,
+    module_text: {
+      "extensions/read-guard.ts": "export class ReadGuard {\n  private call = 0;\n  onNewPrompt(): void { this.call += 1; }\n}\n",
+    },
+  }, [{
+    file: "tests/read-guard.test.ts",
+    text: 'import { ReadGuard } from "../extensions/read-guard.ts";\n',
+  }]);
+  assert.deepEqual(classLines, ["extensions/read-guard.ts: ReadGuard"]);
   const prompt = blindPrompt(task, sources);
+  assert.match(prompt, /Do not invent a field/);
   assert.match(prompt, /lib\/telemetry\.ts: countsAsEdit/);
   assert.equal(prompt.includes("assert.equal"), false);
   assert.deepEqual(interfaceLines({ prompt: "Declared interface, names and signatures only:\nlib/telemetry.ts\n" }, sources), []);
