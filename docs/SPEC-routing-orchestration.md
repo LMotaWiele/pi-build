@@ -123,6 +123,8 @@ This tests nesting on your workload. If Sol passes everything Luna passes and mo
 
 Record the same fields as §2.
 
+**A run stopped by a cost cap is censored, not failed.** It carries no pass/fail label and is excluded from nesting and from §7's replay until re-run with a higher cap. Set Sol's cap from the uncapped Sol runs' distribution — about twice the largest uncapped run — rather than a round number.
+
 ---
 
 ## 4. Handoff
@@ -192,7 +194,7 @@ Starting set. §5.4 prunes it.
 
 **Scope and familiarity:**
 - S1 Does the task create a file under `extensions/`, `lib/`, or `settings/`?
-- S2 Does it name more than one spec stage or section?
+- S2 Does the prompt name two or more **numbered spec sections or stages** (for example "§3" and "§4")? *Reworded 2026-09-24: "section" alone collided with `systemPromptOptions.sections` in this codebase.*
 - S3 Does it use an API or package not used in any implicated file?
 
 **Reversibility:**
@@ -202,7 +204,7 @@ Starting set. §5.4 prunes it.
 
 S1, S2, B1, B2 and R1 have deterministic ground truth in `reference_diff` and the handoff. Score Jev's answers on these across all tasks. Report accuracy per question.
 
-If Jev's accuracy on the deterministic questions is below 90%, stop and report: the classifier is not the reliable component this design assumes, and the rest of §5 would be measuring noise.
+**Amended 2026-09-24: the threshold is per question.** A question below 90% is a question defect — reword it, fix its label rule, or drop it. The classifier fails only if **three or more** deterministic questions fall below 90% after one rewording pass each. The original aggregate rule let one ambiguous question (S2, 4/16) veto a classifier that scored 60/61 on the rest.
 
 ### 5.4 Question leverage
 
@@ -325,3 +327,73 @@ This is a validation, not a measurement. One run cannot rank policies; §7 alrea
 | A question keeps high answer accuracy and zero leverage | Drop it. A correctly answered question that predicts nothing is `single_file_edit` again. |
 | §7 finds the oracle far cheaper than every real policy | Record the gap and which tasks cause it. Those tasks are where the next battery questions come from. |
 | §9 finds the handoff overflows Jev's 4,000-token budget | Trim the handoff by fan-in rank before trimming the checklist. The checklist is what protects against silent fails. |
+
+
+---
+
+## 12. Suite repair — added 2026-09-24, blocks everything after §2
+
+The first pass through §2–§5 measured the graders more than the tiers. Seven tasks scored identically under Luna, Sol, and Luna with handoff — `ab12c94`, `bd51f93`, `78ce7cb`, `4384c58`, `59c9121`, `49d5a83`, `aoh-c40f118`. At least four fail because the held-out tests import a name or path the prompt never gives: `allocate_run_dir`, `lib/settings-keys.ts`, `lib/score-ab.ts`, `lib/hook-budget.ts`. No attempt could pass them.
+
+Nothing in §2–§7 is re-run until this section is done. It is almost entirely scripted, which matters: the orchestrator's session quota is now the scarcest resource, and a script spends none of it.
+
+### 12.1 Interface audit — no model calls
+
+`scripts/audit-graders.mjs`. For every task, list every symbol, module path, and file the held-out tests import or reference. Mark each one **derivable** if it exists in the tree at `parent_sha` or is named in the prompt, and **undeclared** otherwise.
+
+A task with any undeclared interface fails the audit. Report the list per task.
+
+### 12.2 Repair by declaring the interface
+
+For each failing task, add the undeclared interface to the prompt: the file path, the exported names, and their signatures, taken from the commit. Do not add behaviour, only the surface.
+
+This makes the prompts more like your real specs, not less: the specs you write name paths and exports. A prompt that hides them measures guessing, which is not a skill your workflow needs.
+
+Drop a task only if declaring its interface would describe the implementation — if the surface *is* the answer.
+
+### 12.3 Visible checks must touch the new work
+
+Split each task's held-out tests by requirement. Move the tests for roughly half the requirements into `visible_checks`; keep the rest hidden. Choose the split before any run and record it.
+
+Now the classes mean what §2 intended: **silent fail** is passing what the task showed and failing what it did not — the 100k-default class. **Loud fail** is failing what it showed, which the cascade can catch.
+
+### 12.4 Restore visible tests too
+
+Before visible grading, restore every visible test file to its `parent_sha` or declared version, exactly as held-out files are restored. §3's visible totals drifted — `690b685` 42 → 31, `a2c7c72` 47 → 42, `s13-hard` 29 → 24 — so a run could shrink its own visible suite. Log both restores.
+
+### 12.5 Re-verify
+
+Every task: held-out fails at `parent_sha`; passes at the commit; passes the §12.1 audit with zero undeclared interfaces; visible checks fail at `parent_sha` for at least one requirement. If fewer than 12 tasks survive, add tasks from another repository before §2 re-runs.
+
+### 12.6 Regrade first, re-run only what changed
+
+The first pass cost $29.97 in pi runs, 98% of it the Sol arm, and exhausted the orchestrator's session quota. This pass is budgeted to a fraction of that.
+
+**Before anything:** confirm the run trees from the first pass still exist under `/tmp/routing-s2/`, `/tmp/routing-s3/`, `/tmp/routing-s4/`. Copy them to a persistent location. All future run trees go there, not `/tmp`.
+
+**Phase A — no model calls.**
+1. §12.1 audit and §12.2 repair.
+2. §12.3 split and §12.4 restore rules.
+3. **Regrade every existing run** — Luna, Sol, and handoff — for every task whose prompt did not change in §12.2. Capped Sol runs stay censored.
+
+**Phase B — cents.**
+1. Luna on every task whose prompt changed.
+2. Jev on S2 only, all tasks. The other twelve answers stand.
+
+**Decision point.** Count tasks Luna fails after A and B.
+
+**Phase C — the only dollar spend, conditional.**
+- If Luna fails **two or fewer** tasks: skip. The existing Sol evidence on `aoh-5cbfb21` and `aoh-fb5d493` suffices. Write a Jev question targeting what the remaining failures share and go to §5.4.
+- If Luna fails **three or more**: run Sol on **at most four** of them, chosen for different failure types. Hard budget **$10** for the phase. Do not re-run `a0043ca` or `4704b4f`; they passed on both tiers and are regraded in Phase A.
+
+**Handoff (§4.3):** only on tasks Phase C finds Sol passing and Luna failing. Otherwise skip.
+
+### 12.6a Script the runs
+
+Write `scripts/run-arm.sh <arm> <task-list>` once: pin the model, run, restore held-out and visible files, grade, append one row to the outcome matrix. The orchestrator writes the script and the report and does not step through individual runs. A run that needs attention writes it to the row; the orchestrator reads rows, not transcripts.
+
+### 12.7 What carries forward unchanged
+
+- Luna's requirement checklist matched Sol's on 42 of 42 requirements. §4.2's verdict stands: Luna writes the checklist.
+- Jev's cost: $0.000056 per 13-question call, under 3s. The battery can grow freely.
+- `aoh-5cbfb21` and `aoh-fb5d493` — Sol passed, Luna failed with and without handoff, clean grades. Keep them; re-verify under §12.1, but they are the suite's strongest discriminating tasks so far.
