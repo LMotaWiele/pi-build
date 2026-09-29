@@ -478,7 +478,7 @@ for (const task of ordered) {
   fs.mkdirSync(taskDir, { recursive: true });
   const dbPath = path.join(taskDir, "telemetry.db");
   const logPath = path.join(taskDir, "pi.log");
-  const env = { ...process.env, PI_BUILD_TELEMETRY_DB: dbPath };
+  const env = { ...process.env, PI_BUILD_PIPELINE: "1", PI_BUILD_TELEMETRY_DB: dbPath };
   delete env.PI_BUILD_RETRY;
   delete env.PI_OFFLINE;
   const run = await runPiWithContinuation(luna, lunaThinking, lunaPrompt(task), work, env, logPath,
@@ -539,7 +539,7 @@ if (!(resume && fs.existsSync(integrationMarker))) {
   const before = git(work, ["rev-parse", "HEAD"]).trim();
   const logPath = path.join(runDir, "integration.log");
   const dbPath = path.join(runDir, "integration-telemetry.db");
-  const env = { ...process.env, PI_BUILD_TELEMETRY_DB: dbPath };
+  const env = { ...process.env, PI_BUILD_PIPELINE: "1", PI_BUILD_TELEMETRY_DB: dbPath };
   delete env.PI_OFFLINE;
   const tests = [specTests, ...plan.tasks.map((task) => task.acceptanceTest).filter(Boolean)];
   const commands = testCommands(collectTestFiles(work, tests), { pythonProject });

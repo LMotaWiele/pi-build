@@ -48,7 +48,6 @@
     "enabled": true,
     "indexPath": ".agent/notes/INDEX.md",
     "notesDir": ".agent/notes",
-    "explainDir": ".agent/explain",
     "injectIndexOnSessionStart": true,
     "blockRawNotesReads": true,
     "autoScaffold": true,
@@ -64,7 +63,8 @@
     "enabled": true
   },
   "explain": {
-    "enabled": true
+    "enabled": true,
+    "reader": "The reader is Lucas. He knows JavaScript, React, HTML, SQL, C# and PHP/Laravel well, and Python for data and retrieval work. Treat as already known: core JavaScript and Python syntax and built-ins; promises and async/await; array, string, map and math methods; optional chaining and nullish coalescing; try/finally; timers; and Node's basic fs, path and process APIs. Unfamiliar surface is anything else: pi and pi-tui APIs, Node APIs beyond those basics, third-party libraries, TypeScript features beyond plain JavaScript, and patterns specific to this harness's architecture."
   },
   "postEditTypecheck": {
     "enabled": true

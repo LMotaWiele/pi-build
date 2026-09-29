@@ -77,7 +77,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
     if (!extensionEnabled(settings, "recap")) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "recap");
     const block = settingsBlock(settings, "recap");
-    const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
+    const recapRel = typeof block["recapDir"] === "string" ? block["recapDir"] : ".agent/recaps";
     let cwd = process.cwd();
 
     pi.on("session_start", (_event, ctx) => {
@@ -128,7 +128,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
         routingEnabled: extensionEnabled(readPiSettings(), "routing"),
       });
       for (const line of selected.warnings) console.error(`[recap] ${line}`);
-      const dir = path.resolve(root, explainRel);
+      const dir = path.resolve(root, recapRel);
       fs.mkdirSync(dir, { recursive: true });
       const existing = fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.startsWith(`${day}-session-`)) : [];
       const file = path.join(dir, `${day}-session-${existing.length + 1}.md`);

@@ -1,53 +1,28 @@
-/**
- * Every turn that wrote a file gets a walkthrough from a scout subagent.
- * The subagent is read-only. The parent writes under .agent/explain/.
- */
-
+/** After an edit turn, teach the configured reader only genuinely unfamiliar surface. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultModelRef, selectExplainModel, stringMap } from "../lib/models.ts";
-import { explainWriteName, unifiedDiff } from "../lib/markdown.ts";
+import { unifiedDiff } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
 import {
-  attachTelemetry,
-  explainCommand,
-  explainExec,
-  explainOneShot,
-  explainSpawnEnv,
-  extensionEnabled,
-  knownEntriesFromExplanation,
-  mergeKnown,
-  noteWrittenFile,
-  readPiSettings,
-  settingsBlock,
-  sawRunAborted,
-  writtenFiles,
+  acceptKnown, explainPrompt, identifiersIn, knownPath, parseExplanation,
+  resolveReader, shouldExplain as shouldExplainTurn, walkthroughFileName,
+} from "../lib/explain.ts";
+import {
+  attachTelemetry, explainCommand, explainExec, explainOneShot, explainSpawnEnv,
+  extensionEnabled, mergeKnown, noteWrittenFile, readPiSettings, settingsBlock,
+  sawRunAborted, turnSnapshot, writtenFiles,
 } from "../lib/telemetry.ts";
 import { extractAssistantText } from "./recap.ts";
 
-export const EXPLAIN_CONTRACT = `Write five sections, in this order, for a competent programmer who is new to this stack:
-
-1. **What changed** — files, one sentence of purpose each.
-2. **Unfamiliar surface** — every language feature, stdlib call, or library API used that is not already in known.md: what it does, why it appears here. If nothing is unfamiliar, say so explicitly. End the section with one \`known: <name>\` line per new idiom or API.
-3. **The alternative** — the idiomatic other option and why this one won.
-4. **Verify by hand** — the two or three things tests do not cover.
-5. **To modify this yourself** — what to understand first.
-
-Do not write any file. The parent records the walkthrough.`;
-
+// Kept as the public gate used by the historical bounds/one-shot tests.
 export function shouldExplain(files: string[]): boolean {
   return files.length > 0;
 }
 
-/** An aborted turn has nothing finished to narrate. */
-export function explainAfterTurn(
-  files: string[],
-  aborted: boolean,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  if (explainOneShot(env)) return false;
-  return shouldExplain(files) && !aborted;
+export function explainAfterTurn(files: string[], aborted: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
+  return !explainOneShot(env) && !aborted && shouldExplainTurn(files, env);
 }
 
 export default function explainExtension(pi: ExtensionAPI): void {
@@ -60,63 +35,57 @@ export default function explainExtension(pi: ExtensionAPI): void {
     const diffs: string[] = [];
 
     pi.on("tool_result", (event) => {
-      if (event.isError) return;
-      if (event.toolName !== "edit" && event.toolName !== "write") return;
-      const input = event.input as {
-        path?: string;
-        content?: string;
-        edits?: { oldText: string; newText: string }[];
-      };
+      if (event.isError || (event.toolName !== "edit" && event.toolName !== "write")) return;
+      const input = event.input as { path?: string; content?: string; edits?: { oldText: string; newText: string }[] };
       if (!input.path) return;
       noteWrittenFile(input.path);
-      if (event.toolName === "write") {
-        diffs.push(unifiedDiff(input.path, "", input.content ?? ""));
-        return;
-      }
-      for (const edit of input.edits ?? []) diffs.push(unifiedDiff(input.path, edit.oldText, edit.newText));
+      if (event.toolName === "write") diffs.push(unifiedDiff(input.path, "", input.content ?? ""));
+      else for (const edit of input.edits ?? []) diffs.push(unifiedDiff(input.path, edit.oldText, edit.newText));
     });
 
     pi.on("agent_end", async (_event, ctx) => {
+      // Capture before the awaited child call: later events may begin another turn.
+      const turnId = turnSnapshot().turnId;
       const files = writtenFiles();
+      const diff = diffs.join("\n").slice(0, 48_000);
+      diffs.length = 0;
       if (!explainAfterTurn(files, sawRunAborted())) return;
       const routing = settingsBlock(settings, "routing");
       const registry = (ctx as { modelRegistry?: { getAll: () => { provider: string; id: string; name?: string }[] } }).modelRegistry;
       const catalog = registry?.getAll().map((model) => ({ provider: model.provider, id: model.id, name: model.name })) ?? [];
-      const selected = selectExplainModel({
-        tiers: stringMap(routing["tiers"]),
-        catalog,
-        routingEnabled: extensionEnabled(settings, "routing"),
-        defaultModel: defaultModelRef(settings),
-      });
+      const selected = selectExplainModel({ tiers: stringMap(routing["tiers"]), catalog,
+        routingEnabled: extensionEnabled(settings, "routing"), defaultModel: defaultModelRef(settings) });
       for (const line of selected.warnings) console.error(`[explain] ${line}`);
       if (!selected.model) return;
-      const dir = path.resolve(findProjectRoot(ctx.cwd), explainRel);
-      const knownPath = path.join(dir, "known.md");
-      const known = fs.existsSync(knownPath) ? fs.readFileSync(knownPath, "utf8") : "";
-      const diff = diffs.join("\n").slice(0, 48_000);
-      diffs.length = 0;
-      const prompt = `${EXPLAIN_CONTRACT}\n\nAlready known:\n${known || "(none)"}\n\nTouched files:\n${files.join("\n")}\n\nDiff:\n${diff}`;
-      const command = explainCommand(prompt, selected.model);
-      let body = "";
+      const root = findProjectRoot(ctx.cwd);
+      const dir = path.resolve(root, explainRel);
+      const knownFile = knownPath(process.env);
+      const known = fs.existsSync(knownFile) ? fs.readFileSync(knownFile, "utf8") : "";
+      const prompt = explainPrompt({ reader: resolveReader(settings), known, files, diff });
+      let body: string;
       try {
-        const result = await explainExec(command, {
-          cwd: ctx.cwd,
-          timeout: 180_000,
-          maxBuffer: 8_000_000,
-          env: explainSpawnEnv(),
+        const result = await explainExec(explainCommand(prompt, selected.model), {
+          cwd: ctx.cwd, timeout: 180_000, maxBuffer: 8_000_000, env: explainSpawnEnv(),
         });
         body = extractAssistantText(result.stdout);
       } catch (err) {
-        body = `Explanation subagent failed: ${err instanceof Error ? err.message : String(err)}\n\nTouched:\n${files.join("\n")}\n`;
-        console.error(`[explain] ${body}`);
+        console.error("[explain] explanation call failed; no walkthrough written", err);
+        return;
       }
       if (!body.trim()) return;
+      const parsed = parseExplanation(body);
+      if (parsed.nothing || !parsed.unfamiliar || !parsed.modify) return;
+      const target = path.join(dir, walkthroughFileName(new Date().toISOString().slice(0, 10), turnId));
       fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, explainWriteName("turn", new Date().toISOString().slice(0, 10)));
-      const target = fs.existsSync(file) ? file.replace(/\.md$/, `-${Date.now()}.md`) : file;
       fs.writeFileSync(target, body.endsWith("\n") ? body : `${body}\n`);
-      const entries = knownEntriesFromExplanation(body);
-      if (entries.length) fs.writeFileSync(knownPath, mergeKnown(known, entries));
+      const sources = files.flatMap((file) => {
+        try { return [fs.readFileSync(path.resolve(ctx.cwd, file), "utf8")]; } catch { return []; }
+      });
+      const entries = acceptKnown(parsed.known, parsed.unfamiliar, identifiersIn(sources));
+      if (entries.length) {
+        fs.mkdirSync(path.dirname(knownFile), { recursive: true });
+        fs.writeFileSync(knownFile, mergeKnown(known, entries));
+      }
       console.error(`[explain] wrote ${target}`);
     });
   } catch (err) {

@@ -162,6 +162,15 @@ test("queue append numbers the next row", () => {
   assert.equal(parsed.activeNext.length, before.activeNext.length + 1);
 });
 
+test("memory-gate does not register explain_write or advertise it", () => {
+  // This source-level seam is deliberate: the extension imports typebox from pi's
+  // installed package, which is not resolvable from this standalone Node suite.
+  const source = fs.readFileSync("extensions/memory-gate.ts", "utf8");
+  const registered = [...source.matchAll(/name:\s*"([a-z_]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(registered, ["note_open", "note_update", "queue_append", "memory_bootstrap"]);
+  assert.doesNotMatch(source, /explain_write/);
+});
+
 test("marked memory block is injected once across two compactions", () => {
   const once = replaceMarked("", "Notes:\n| a |");
   const twice = replaceMarked(once, "Notes:\n| a |");

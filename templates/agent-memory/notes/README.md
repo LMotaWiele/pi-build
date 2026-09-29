@@ -21,7 +21,7 @@ A note never tells you what to work on. It tells you what is true, and what woul
 | Gotchas | `*-gotchas.md` | Cross-cutting traps that recur |
 | Ledger (optional) | `burden-ledger.md` / `changelog-notes.md` | Hours, milestones, one-line outcomes |
 | Index | `INDEX.md` | **Agent entrypoint + queue** |
-| Explanations | `.agent/explain/` | Walkthroughs for the human — **not notes, not indexed** |
+| Explanations | `.agent/explain/` | Walkthroughs the harness writes for the human — **never written by hand, not notes, not indexed** |
 
 ## Access (token-cheap)
 
@@ -92,4 +92,4 @@ The `If → Then` table is the contract that survives seeing the results.
 - Label names (verdicts, modes) are part of the contract — put them in the INDEX glossary if they matter; do not stretch old labels onto new conditions.
 - State experimental conditions explicitly when a claim depends on them (oracle vs free, train vs eval, etc.).
 - No production logic in notes.
-- No walkthroughs. If you are explaining how something works to a human, it goes in `.agent/explain/`. Only a trap that will recur becomes a gotcha card here.
+- No walkthroughs. `.agent/explain/` is written by the harness only; do not write there. Record progress on a spec in its run record; for other work, in the commit message. Only a trap that will recur becomes a gotcha card here.

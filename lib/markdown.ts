@@ -677,16 +677,6 @@ export function formatIndexInjection(parsed: ParsedIndex, estimate: (text: strin
   return { text, tokens: estimate(text), truncated: true };
 }
 
-export function explainWriteName(slug: string, day: string): string {
-  const safe = slug
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-  if (!safe) throw new ParseError("explain_write slug is empty after sanitizing.");
-  return `${day}-${safe}.md`;
-}
-
 /** Replace the legacy criteria heading. Every other byte stays. */
 export function convertNoteToV1(markdown: string): string {
   return markdown.replace(/^## Pre-committed next[ \t]*$/m, "## Pre-committed criteria");

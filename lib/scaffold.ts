@@ -289,8 +289,8 @@ export function validateProject(root: string, templatesDir = templatesDirFromSet
   // The harness's own notes may name its paths; other projects must stay neutral.
   const harnessRoot = path.resolve(path.dirname(fs.realpathSync(fileURLToPath(import.meta.url))), "..");
   if (fs.realpathSync(project) !== harnessRoot) {
-    // Generated map and explanations are output, not project memory.
-    const outputDirs = ["map", "explain"].map((name) => path.join(agentDir, name) + path.sep);
+    // Generated map, explanations and recaps are output, not project memory.
+    const outputDirs = ["map", "explain", "recaps"].map((name) => path.join(agentDir, name) + path.sep);
     for (const file of walkFiles(agentDir)) {
       if (outputDirs.some((dir) => file.startsWith(dir))) continue;
       const text = fs.readFileSync(file, "utf8");

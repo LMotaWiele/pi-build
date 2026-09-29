@@ -44,7 +44,6 @@
     "enabled": true,
     "indexPath": ".agent/notes/INDEX.md",
     "notesDir": ".agent/notes",
-    "explainDir": ".agent/explain",
     "injectIndexOnSessionStart": true,
     "blockRawNotesReads": true,
     "autoScaffold": true,

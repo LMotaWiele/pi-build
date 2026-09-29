@@ -45,7 +45,7 @@ function usage(db) {
 }
 function pi(work, model, thinking, prompt, log, db) {
   const result = run("pi", ["--model", model, "--thinking", thinking, "--approve", "-p", prompt], work,
-    { env: { ...process.env, PI_BUILD_TELEMETRY_DB: db } });
+    { env: { ...process.env, PI_BUILD_PIPELINE: "1", PI_BUILD_TELEMETRY_DB: db } });
   write(log, result.output);
   if (result.code === 75) exit(`Quota hold; resume with bin/pi-implement ${query} --resume`, 75);
   return result;

@@ -12,7 +12,6 @@ import {
   ParseError,
   appendQueue,
   applyNoteUpdate,
-  explainWriteName,
   formatIndexInjection,
   gateNoteOpen,
   parseIndex,
@@ -53,7 +52,6 @@ const TOOL_INJECTION = `Pi tools for this project:
 - note_open(topic, depth?, override?) opens one indexed note. A second note in the same task needs override:true, and that override is logged.
 - note_update(path, field, value) patches one front-matter field and leaves the rest of the file unchanged.
 - queue_append(item, source) appends one queue entry in the file's existing format.
-- explain_write(slug, body) writes a walkthrough under .agent/explain/.
 - memory_bootstrap() creates any missing memory files and never overwrites an existing file.
 Raw reads of .agent/notes/ under this project are rejected. Pass force:true on a read to log an exception. memoryGate.enabled: false is the kill switch.`;
 
@@ -85,7 +83,6 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
     const notesPerTask = typeof block["notesPerTask"] === "number" && block["notesPerTask"] > 0 ? block["notesPerTask"] : 1;
     const indexRel = typeof block["indexPath"] === "string" ? block["indexPath"] : ".agent/notes/INDEX.md";
     const notesRel = typeof block["notesDir"] === "string" ? block["notesDir"] : ".agent/notes";
-    const explainRel = typeof block["explainDir"] === "string" ? block["explainDir"] : ".agent/explain";
     const templatesDir = templatesDirFromSettings(process.env.PI_BUILD_SETTINGS);
     let parsed: ParsedIndex | null = null;
     let parseFailed = false;
@@ -318,30 +315,6 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
           console.error(`[memory-gate] ${message}`);
           return { content: [{ type: "text", text: message }], isError: true };
         }
-      },
-    });
-
-    pi.registerTool({
-      name: "explain_write",
-      label: "Write explanation",
-      description: "Write a walkthrough under .agent/explain/. Never touches INDEX.",
-      promptSnippet: "Write an explanation for the human",
-      promptGuidelines: ["Use explain_write for walkthroughs. Never put an explanation in .agent/notes/ or INDEX."],
-      parameters: Type.Object({
-        slug: Type.String({ description: "Short kebab-case slug" }),
-        body: Type.String({ description: "Markdown walkthrough" }),
-      }),
-      async execute(_id, params, _signal, _onUpdate, ctx) {
-        const dir = path.resolve(findProjectRoot(ctx.cwd), explainRel);
-        const name = explainWriteName(params.slug, today());
-        const file = path.join(dir, name);
-        const relative = path.relative(dir, file);
-        if (relative.startsWith("..") || path.isAbsolute(relative)) {
-          return { content: [{ type: "text", text: "explain_write refuses paths outside .agent/explain/" }], isError: true };
-        }
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(file, params.body.endsWith("\n") ? params.body : `${params.body}\n`);
-        return { content: [{ type: "text", text: JSON.stringify({ path: file }) }] };
       },
     });
 
