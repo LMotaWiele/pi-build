@@ -265,7 +265,7 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
       label: "Update note",
       description: "Patch one front-matter field. Preserves the rest of the file. Rejects sealed notes.",
       promptSnippet: "Patch one note front-matter field",
-      promptGuidelines: ["Use note_update for front-matter. Do not edit a sealed note. Do not commit."],
+      promptGuidelines: ["Use note_update for front-matter. Do not edit a sealed note."],
       parameters: Type.Object({
         path: Type.String({ description: "Note path returned by note_open" }),
         field: Type.String({ description: "Front-matter field name" }),
