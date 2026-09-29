@@ -3,10 +3,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { countVerifyChecks, pipelineThinking, undeclaredImports, validatePlan } from "../lib/plan.ts";
-import { childEnv, pipelineRunRoot, preflight, testCommands } from "../lib/pipeline.ts";
+import { childEnv, childPiArgs, costByRole, pipelineRunRoot, preflight, testCommands, testEnv } from "../lib/pipeline.ts";
+import { childEventToProgress, finalText, parseProgressLine } from "../lib/progress.ts";
 import { markImplemented, resolveSpec, specPaths } from "../lib/specs.ts";
 import { defaultHoldPath, readHold } from "../lib/quota.ts";
 import { readPiSettings } from "../lib/telemetry.ts";
@@ -14,9 +15,33 @@ import { readPiSettings } from "../lib/telemetry.ts";
 const root = path.resolve(import.meta.dirname, "..");
 const specsDir = path.join(root, "docs/specs");
 const argv = process.argv.slice(2);
-const query = argv.find((arg) => !arg.startsWith("--"));
+const query = argv.find((arg, i) => !arg.startsWith("--") && (i === 0 || argv[i - 1] !== "--progress"));
 const flags = new Set(argv.filter((arg) => arg.startsWith("--")));
-const exit = (text, code = 1) => { console.error(text); process.exit(code); };
+const progress = argv.includes("--progress") && argv[argv.indexOf("--progress") + 1] === "json";
+let currentChild = null;
+let terminated = false;
+let done = false;
+const emit = (event) => { if (progress) process.stdout.write(`${JSON.stringify(event)}\n`); };
+const finish = (ok, summary, extra = {}) => {
+  if (done) return;
+  done = true;
+  emit({ type: "done", ok, summary, ...extra });
+};
+const exit = (text, code = 1) => {
+  console.error(text);
+  if (code === 75) emit({ type: "notice", text });
+  finish(false, text);
+  process.exit(code);
+};
+process.on("SIGTERM", () => {
+  terminated = true;
+  currentChild?.kill("SIGTERM");
+  if (!currentChild) exit("Interrupted; run directory and worktree retained for --resume", 130);
+});
+const interrupted = () => { if (terminated) exit("Interrupted; run directory and worktree retained for --resume", 130); };
+const stage = (name) => emit({ type: "stage", stage: name });
+process.on("uncaughtException", (err) => exit(String(err.stack || err)));
+process.on("unhandledRejection", (err) => exit(String(err)));
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
 const read = (file) => fs.readFileSync(file, "utf8");
 const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -24,14 +49,14 @@ const filesIn = (dir, prefix = "") => fs.existsSync(dir) ? fs.readdirSync(dir, {
   const rel = path.join(prefix, entry.name);
   return entry.isDirectory() ? filesIn(path.join(dir, entry.name), rel) : [rel];
 }) : [];
-const run = (cmd, args, cwd, opts = {}) => {
-  const result = spawnSync(cmd, args, { cwd, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, ...opts });
-  return { code: result.status ?? 1, output: `${result.stdout || ""}${result.stderr || ""}` };
-};
-function tests(work, files, pythonProject) {
+async function tests(work, files, pythonProject) {
   const cmds = testCommands(files, { pythonProject });
   if (!cmds.length) return { code: 1, output: "no recognized test files" };
-  const results = cmds.map(({ cmd, args }) => run(cmd, args, work));
+  const results = [];
+  for (const { cmd, args } of cmds) {
+    results.push(await streamed(cmd, args, work, { env: testEnv(process.env) }));
+    interrupted();
+  }
   return { code: results.some((result) => result.code !== 0) ? 1 : 0, output: results.map((r) => r.output).join("\n") };
 }
 function usage(db) {
@@ -43,19 +68,83 @@ function usage(db) {
   } catch { return { calls: 0, cost: 0 }; }
   finally { store.close(); }
 }
-function pi(work, model, thinking, prompt, log, db) {
-  const result = run("pi", ["--model", model, "--thinking", thinking, "--approve", "-p", prompt], work,
-    { env: childEnv(process.env, "planner", db) });
-  write(log, result.output);
+// Write the raw JSON stream immediately: a failed or interrupted run remains inspectable.
+function streamed(cmd, args, cwd, { env = process.env, log, role, forward = false } = {}) {
+  return new Promise((resolve) => {
+    if (log) write(log, "");
+    let output = "";
+    let pending = "";
+    let stderr = "";
+    const child = spawn(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    currentChild = child;
+    const line = (text) => {
+      if (forward) {
+        const event = parseProgressLine(text);
+        // The entrypoint owns the final handoff and done event.
+        if (event && event.type !== "done" && event.stage !== "grade" && event.stage !== "handoff") emit(event);
+      } else if (role) {
+        try {
+          for (const event of childEventToProgress(role, undefined, JSON.parse(text))) emit(event);
+        } catch { /* Ignore partial or non-JSON child output. */ }
+      }
+    };
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      if (log) fs.appendFileSync(log, text);
+      output += text;
+      pending += text;
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const item of lines) line(item.replace(/\r$/, ""));
+    });
+    child.stderr.on("data", (chunk) => {
+      const text = chunk.toString();
+      stderr += text;
+      if (progress) process.stderr.write(text);
+    });
+    child.on("error", (err) => { stderr += String(err); });
+    child.on("close", (code) => {
+      if (pending.trim()) line(pending);
+      if (currentChild === child) currentChild = null;
+      resolve({ code: code ?? 1, output: role ? `${finalText(output)}${stderr ? `\n${stderr}` : ""}` : `${output}${stderr}` });
+    });
+    if (terminated) child.kill("SIGTERM");
+  });
+}
+async function pi(work, model, thinking, prompt, log, db) {
+  const result = await streamed("pi", childPiArgs({ model, thinking, prompt, sessionDir: path.join(path.dirname(log), `${path.basename(log, ".log")}-session`) }), work,
+    { env: childEnv(process.env, "planner", db), log, role: "planner" });
+  interrupted();
   if (result.code === 75) exit(`Quota hold; resume with bin/pi-implement ${query} --resume`, 75);
   return result;
+}
+function runCosts(dir) {
+  const rows = [];
+  const visit = (folder) => {
+    if (!fs.existsSync(folder)) return;
+    for (const item of fs.readdirSync(folder, { withFileTypes: true })) {
+      if (item.isDirectory()) {
+        if (item.name !== "branch" && item.name !== "work") visit(path.join(folder, item.name));
+      } else if (item.isFile() && (item.name === "telemetry.db" || item.name.endsWith("-telemetry.db"))) {
+        let store;
+        try {
+          store = new DatabaseSync(path.join(folder, item.name), { readOnly: true });
+          for (const row of store.prepare("SELECT subagent_role AS role, cost_usd AS cost FROM inference_calls").all()) rows.push(row);
+        } catch { /* A child may not have initialized its telemetry yet. */ }
+        finally { store?.close(); }
+      }
+    }
+  };
+  visit(dir);
+  return costByRole(rows);
 }
 function planPrompt(spec, planDir, checks) {
   return `Read ${spec} and the repository. Write an implementation plan to ${planDir}/plan.json following the Plan interface in lib/plan.ts, and one acceptance test per Luna task in ${planDir}/.\n\n` +
     `Map each verification V-number, 1 through ${checks}, to verifyMap key without the V (V3 is key "3"). Order tasks by the spec's stages. List every requirement and map every V-number to requirement ids or "process". Split tasks into one file each; assign to Luna only tasks needing no cross-file reasoning or open design decision; assign the rest to Sol. Each Luna brief must stand alone, with exact interfaces, constants, reading and forbidden edits. Tests import only declared interfaces and assert behaviour. Run validatePlan and undeclaredImports, confirm every acceptance test fails before implementation. Do not implement anything.`;
 }
-if (!query || [...flags].some((flag) => !["--dry-run", "--plan-only", "--resume"].includes(flag)))
-  exit("usage: bin/pi-implement <spec> [--dry-run] [--plan-only] [--resume]", 2);
+if (!query || [...flags].some((flag) => !["--dry-run", "--plan-only", "--resume", "--progress"].includes(flag)) ||
+    (argv.includes("--progress") && !progress))
+  exit("usage: bin/pi-implement <spec> [--dry-run] [--plan-only] [--resume] [--progress json]", 2);
 const resolution = resolveSpec(fs.readdirSync(specsDir), query);
 if (!resolution.ok) exit(resolution.error, 2);
 const spec = resolution.spec;
@@ -64,9 +153,10 @@ const specRel = path.join("docs/specs", paths.spec);
 const testRel = path.join("docs/specs", paths.tests);
 const planRel = path.join("docs/specs", paths.plan);
 const dirty = git(root, "status", "--porcelain").split("\n").filter(Boolean);
+stage("preflight");
 const check = preflight({ specText: read(path.join(root, specRel)), hasTestsDir: fs.existsSync(path.join(root, testRel)),
   held: readHold(defaultHoldPath(process.env)) !== null, dirty });
-for (const warning of check.warnings) console.error(`warning: ${warning}`);
+for (const warning of check.warnings) { console.error(`warning: ${warning}`); emit({ type: "notice", text: warning }); }
 if (check.blocking.length) exit(check.blocking.join("\n"), check.blocking.some((s) => s.includes("quota hold")) ? 75 : 2);
 const settings = readPiSettings();
 const planner = settings.routing?.tiers?.escalate || "openai-codex/gpt-6-sol";
@@ -75,8 +165,10 @@ const levels = pipelineThinking(settings);
 const pythonProject = settings.pipeline?.pythonProject || "tools/map";
 const commands = testCommands(filesIn(path.join(root, testRel), testRel), { pythonProject });
 if (flags.has("--dry-run")) {
-  console.log(JSON.stringify({ spec: specRel, tests: testRel, plan: planRel, runRecord: paths.runRecord,
-    checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands }, null, 2));
+  const text = JSON.stringify({ spec: specRel, tests: testRel, plan: planRel, runRecord: paths.runRecord,
+    checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands }, null, 2);
+  if (progress) { process.stderr.write(`${text}\n`); finish(true, "dry run complete"); }
+  else console.log(text);
   process.exit(0);
 }
 const base = path.join(pipelineRunRoot(settings, os.homedir()), `SPEC-${spec.id}-${spec.slug}`);
@@ -95,11 +187,13 @@ if (!flags.has("--resume")) {
 }
 const workPlan = path.join(work, planRel, "plan.json");
 const specTests = filesIn(path.join(work, testRel), testRel);
+stage("plan");
 if (!fs.existsSync(workPlan)) {
-  const created = pi(work, planner, levels.planner, planPrompt(specRel, planRel, check.checks),
+  const created = await pi(work, planner, levels.planner, planPrompt(specRel, planRel, check.checks),
     path.join(dir, "planner.log"), path.join(dir, "planner-telemetry.db"));
   if (created.code !== 0) exit(`planning failed: ${created.output}`);
 }
+stage("gate");
 let gate = "";
 for (let repair = 0; repair <= 2; repair++) {
   const errors = [];
@@ -122,28 +216,38 @@ for (let repair = 0; repair <= 2; repair++) {
       if (!task.acceptanceTest || !fs.existsSync(file)) { errors.push(`${task.id}: missing acceptance test`); continue; }
       const undeclared = undeclaredImports(read(file), task.interfaces || []);
       if (undeclared.length) errors.push(`${task.id}: undeclaredImports ${undeclared.join(", ")}`);
-      const result = tests(work, [task.acceptanceTest], pythonProject);
+      const result = await tests(work, [task.acceptanceTest], pythonProject);
       if (result.code === 0) errors.push(`${task.id}: acceptance test already passes`);
       if (/no recognized test files/.test(result.output)) errors.push(`${task.id}: ${result.output}`);
     }
   } catch (err) { errors.push(String(err)); }
-  if (!errors.length) { gate = "pass"; break; }
+  if (!errors.length) { gate = "pass"; emit({ type: "notice", text: `Plan gate round ${repair + 1}: pass` }); break; }
   gate = errors.join("\n");
+  emit({ type: "notice", text: `Plan gate round ${repair + 1}: ${gate}` });
   write(path.join(dir, `gate-${repair}.log`), gate);
   if (repair === 2) exit(`plan gate failed after two repairs:\n${gate}`);
-  const fixed = pi(work, planner, levels.planner, `Repair the plan and its acceptance tests only. Gate errors:\n${gate}\nDo not implement tasks.`,
+  const fixed = await pi(work, planner, levels.planner, `Repair the plan and its acceptance tests only. Gate errors:\n${gate}\nDo not implement tasks.`,
     path.join(dir, `repair-${repair + 1}.log`), path.join(dir, `repair-${repair + 1}-telemetry.db`));
   if (fixed.code !== 0) exit(`plan repair failed: ${fixed.output}`);
 }
 git(work, "add", "--", planRel);
 if (git(work, "diff", "--cached", "--name-only")) git(work, "commit", "-m", `plan: SPEC-${spec.id}`);
 write(path.join(dir, "gate.json"), JSON.stringify({ result: gate, checks: check.checks }, null, 2));
-if (flags.has("--plan-only")) { console.log(`${branch} ${workPlan}: plan gate passed`); process.exit(0); }
-const runner = run(process.execPath, ["--experimental-strip-types", path.join(work, "scripts/run-plan.mjs"),
-  "--plan", workPlan, "--run-dir", dir, ...(flags.has("--resume") ? ["--resume"] : [])], work);
-write(path.join(dir, "runner.log"), runner.output);
+if (flags.has("--plan-only")) {
+  const text = `${branch} ${workPlan}: plan gate passed`;
+  if (progress) { process.stderr.write(`${text}\n`); finish(true, text, { branch }); }
+  else console.log(text);
+  process.exit(0);
+}
+// The runner owns task and integration stages; its JSONL stream is forwarded as received.
+const runner = await streamed(process.execPath, ["--experimental-strip-types", path.join(work, "scripts/run-plan.mjs"),
+  "--plan", workPlan, "--run-dir", dir, ...(progress ? ["--progress", "json"] : []),
+  ...(flags.has("--resume") ? ["--resume"] : [])], work,
+  { log: path.join(dir, "runner.log"), forward: progress });
+interrupted();
 if (runner.code === 75) exit(`quota hold: bin/pi-implement ${query} --resume`, 75);
 if (runner.code !== 0) exit(`runner failed (${runner.code}): ${runner.output}`);
+stage("grade");
 const nested = path.join(dir, "work");
 const gradePath = path.join(dir, "grade.json");
 const grade = JSON.parse(read(gradePath));
@@ -152,6 +256,7 @@ if (grade.specTests.code !== 0 || grade.planTests.code !== 0 || grade.typecheck.
 }
 const resultRows = fs.existsSync(path.join(dir, "results.jsonl")) ? read(path.join(dir, "results.jsonl")).trim().split("\n").filter(Boolean).map(JSON.parse) : [];
 const protectedDiff = fs.existsSync(path.join(dir, "protected-edits.diff")) ? read(path.join(dir, "protected-edits.diff")) : "";
+stage("handoff");
 // The runner commits in its detached worktree. Fast-forward only our review branch.
 const finished = git(nested, "rev-parse", "HEAD");
 // Planning sessions can generate local walkthroughs on this worktree. They are
@@ -164,12 +269,12 @@ if (!fs.existsSync(report)) exit(`integration did not write ${report}`);
 const branchReport = path.join(work, planRel, "report.md");
 write(branchReport, read(report));
 const runRecord = path.join(work, "docs/specs", paths.runRecord);
-const costs = resultRows.reduce((total, row) => total + (row.providerCost || 0), 0);
+const costs = runCosts(dir);
 const record = `# SPEC-${spec.id} run\n\nImplemented by: pi pipeline\n\nBranch: ${branch}\nPlan: ${planRel}; gate: ${gate}; checks: ${check.checks}\n\n` +
   `## Tasks\n${resultRows.map((row) => `- ${row.id}: ${row.acceptance}; model ${row.model}; rounds ${row.rounds}; cost $${row.providerCost}`).join("\n")}\n\n` +
   `## Final grade\n\n\`\`\`json\n${JSON.stringify(grade, null, 2)}\n\`\`\`\n\n` +
   `## Runtime\nStuck findings, escalations and pauses: see task session logs and telemetry in ${dir}.\n` +
-  `Provider task cost: $${costs}; planner: ${JSON.stringify(usage(path.join(dir, "planner-telemetry.db")))}. Quota deltas: see usage snapshots in telemetry.\n\n` +
+  `Provider cost by role: planner $${costs.planner}; editor $${costs.editor}; integration $${costs.integration}; other $${costs.other}; total $${costs.total}. Planner: ${JSON.stringify(usage(path.join(dir, "planner-telemetry.db")))}. Quota deltas: see usage snapshots in telemetry.\n\n` +
   `## Protected files diff\n\n\`\`\`diff\n${protectedDiff}\n\`\`\`\n\n## Report\n${read(report)}\n`;
 write(runRecord, record);
 const indexPath = path.join(work, "docs/specs/index.md");
@@ -181,4 +286,6 @@ git(work, "add", "--", path.relative(work, runRecord), path.relative(work, branc
 git(work, "commit", "-m", `pipeline: record SPEC-${spec.id} run`);
 git(root, "worktree", "remove", "--force", nested);
 git(root, "worktree", "remove", "--force", work);
-console.log(`${branch} ${paths.runRecord} — spec ${grade.specTests.code === 0 ? "pass" : "fail"}, plan ${grade.planTests.code === 0 ? "pass" : "fail"}`);
+const summary = `${branch} ${paths.runRecord} — spec ${grade.specTests.code === 0 ? "pass" : "fail"}, plan ${grade.planTests.code === 0 ? "pass" : "fail"}`;
+if (progress) { finish(true, summary, { branch, runRecord: path.join("docs/specs", paths.runRecord) }); }
+else console.log(summary);

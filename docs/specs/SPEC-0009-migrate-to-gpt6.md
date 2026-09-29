@@ -215,3 +215,5 @@ Continuation: update the run record `/docs/specs/SPEC-0009-run.md` after each st
 ## 11. Landing
 
 Filled from the review.
+
+`host-config.test.ts` is superseded by SPEC-0015's `host-config.test.ts`.

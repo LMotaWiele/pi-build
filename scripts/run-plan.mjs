@@ -10,17 +10,35 @@ import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { DatabaseSync } from "node:sqlite";
 import { decide } from "../extensions/jev/adapter.ts";
 import { DIFFICULTY_QUESTIONS } from "../extensions/jev/questions-difficulty.ts";
 import { QUALITY_QUESTIONS } from "../extensions/jev/questions-quality.ts";
 import { checkConformance, parseUnifiedDiff } from "../lib/conformance.ts";
 import { countVerifyChecks, pipelineThinking, taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
-import { childEnv, testCommands } from "../lib/pipeline.ts";
+import { childEnv, childPiArgs, testCommands, testEnv } from "../lib/pipeline.ts";
+import { childEventToProgress, finalText } from "../lib/progress.ts";
 
 const REPO = path.resolve(import.meta.dirname, "..");
 const BUDGET_TOKENS = 4000;
 const CODE_EXT = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx"]);
+const progressMode = process.argv.includes("--progress") && argValue("--progress") === "json";
+let activeChild = null;
+let interrupted = false;
+function emit(event) {
+  if (progressMode) process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+function checkInterrupted() {
+  if (interrupted) process.exit(130);
+}
+process.on("SIGTERM", () => {
+  if (interrupted) return;
+  interrupted = true;
+  emit({ type: "done", ok: false, summary: "Interrupted; resume with --resume" });
+  if (activeChild) activeChild.kill("SIGTERM");
+  else process.exit(130);
+});
 
 function argValue(name) {
   const i = process.argv.indexOf(name);
@@ -30,6 +48,8 @@ function argValue(name) {
 
 function fail(message, code = 1) {
   console.error(message);
+  emit({ type: "notice", text: message });
+  if (progressMode) emit({ type: "done", ok: false, summary: message });
   process.exit(code);
 }
 
@@ -261,7 +281,7 @@ function runTests(cwd, files, pythonProject) {
   for (const command of commands) {
     try {
       out += execFileSync(command.cmd, command.args, {
-        cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024,
+        cwd, env: testEnv(process.env), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024,
       });
     } catch (err) {
       code = err.status ?? 1;
@@ -306,31 +326,48 @@ function resumeCommand(planPath, runDir) {
 }
 
 function stopForHold(planPath, runDir, detail) {
+  emit({ type: "notice", text: `${detail}; ${resumeCommand(planPath, runDir)}` });
   console.error(detail);
   console.error(resumeCommand(planPath, runDir));
   process.exit(75);
 }
 
-function runPi(args, cwd, env, logPath, append = false) {
+function runPi(args, cwd, env, logPath, role, taskId, append = false) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const logFd = fs.openSync(logPath, append ? "a" : "w");
   const started = Date.now();
   return new Promise((resolve) => {
-    const child = spawn("pi", args, { cwd, env, stdio: ["ignore", logFd, logFd] });
-    child.on("error", (err) => {
-      fs.closeSync(logFd);
-      resolve({ code: 127, wallS: (Date.now() - started) / 1000, error: String(err) });
+    const child = spawn("pi", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    // pi.log is JSONL only; diagnostics must never corrupt finalText or replay.
+    child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+    activeChild = child;
+    if (interrupted) child.kill("SIGTERM");
+    let pending = "";
+    const decoder = new StringDecoder("utf8");
+    const accept = (line) => {
+      if (!line.trim()) return;
+      try {
+        for (const event of childEventToProgress(role, taskId, JSON.parse(line))) emit(event);
+      } catch { /* An invalid or unfinished JSON line is retained in pi.log, not forwarded. */ }
+    };
+    child.stdout.on("data", (chunk) => {
+      fs.writeSync(logFd, chunk);
+      pending += decoder.write(chunk);
+      let end;
+      while ((end = pending.indexOf("\n")) !== -1) {
+        accept(pending.slice(0, end));
+        pending = pending.slice(end + 1);
+      }
     });
+    let error = null;
+    child.on("error", (err) => { error = String(err); });
     child.on("close", (code) => {
+      accept(pending + decoder.end());
+      if (activeChild === child) activeChild = null;
       fs.closeSync(logFd);
-      resolve({ code: code ?? 1, wallS: (Date.now() - started) / 1000 });
+      resolve({ code: error ? 127 : code ?? 1, wallS: (Date.now() - started) / 1000, ...(error ? { error } : {}) });
     });
   });
-}
-
-function piArgs(model, thinking, prompt, sessionDir, continuing = false) {
-  return ["--model", model, "--thinking", thinking, "--session-dir", sessionDir,
-    ...(continuing ? ["--continue"] : []), "--approve", "-p", prompt];
 }
 
 function continuationCount(sessionDir) {
@@ -348,17 +385,19 @@ function continuationCount(sessionDir) {
   return count;
 }
 
-async function runPiWithContinuation(model, thinking, prompt, work, env, logPath, sessionDir, onHold) {
+async function runPiWithContinuation(model, thinking, prompt, work, env, logPath, sessionDir, role, taskId, onHold) {
   fs.mkdirSync(sessionDir, { recursive: true });
   let seen = continuationCount(sessionDir);
   let wallS = 0;
   for (let attempts = 0; attempts < 10; attempts++) {
-    const run = await runPi(piArgs(model, thinking, attempts ? "continue" : prompt, sessionDir, attempts > 0),
-      work, env, logPath, attempts > 0);
+    const run = await runPi(childPiArgs({ model, thinking, prompt: attempts ? "continue" : prompt,
+      sessionDir, continuing: attempts > 0 }), work, env, logPath, role, taskId, attempts > 0);
+    checkInterrupted();
     wallS += run.wallS;
     if (run.code === 75) onHold();
     const recorded = continuationCount(sessionDir);
     if (recorded <= seen || run.code !== 0) return { ...run, wallS };
+    emit({ type: "notice", text: `${role}${taskId ? ` ${taskId}` : ""}: overflow continuation ${attempts + 1}` });
     seen = recorded;
   }
   throw new Error(`too many overflow continuations in ${sessionDir}`);
@@ -404,7 +443,8 @@ function writeGrade(runDir, grade) {
 const planArg = argValue("--plan");
 const runDirArg = argValue("--run-dir");
 const resume = process.argv.includes("--resume");
-if (!planArg || !runDirArg) fail("usage: scripts/run-plan.mjs --plan <plan.json> --run-dir <dir> [--resume]", 2);
+if (!planArg || !runDirArg || (process.argv.includes("--progress") && !progressMode))
+  fail("usage: scripts/run-plan.mjs --plan <plan.json> --run-dir <dir> [--resume] [--progress json]", 2);
 
 const planPath = path.resolve(planArg);
 const runDir = path.resolve(runDirArg);
@@ -412,12 +452,14 @@ if (runDir === REPO || runDir.startsWith(`${REPO}${path.sep}`)) fail(`run-dir mu
 const planRel = path.relative(REPO, planPath);
 if (planRel.startsWith("..")) fail(`plan is outside the repository: ${planPath}`, 2);
 
+emit({ type: "stage", stage: "gate" });
 const plan = readJson(planPath);
 const specPath = path.resolve(REPO, plan.spec);
 const specText = fs.readFileSync(specPath, "utf8");
 const count = countVerifyChecks(specText);
 const check = validatePlan(plan, count);
 if (!check.ok) fail(`validatePlan failed:\n${check.errors.join("\n")}`);
+emit({ type: "notice", text: "Plan validation passed" });
 
 const planDir = path.dirname(planPath);
 for (const task of plan.tasks) {
@@ -453,8 +495,15 @@ const ordered = taskOrder(plan)
   .map((id) => plan.tasks.find((task) => task.id === id))
   .filter((task) => task && task.assignee === "luna");
 
+emit({ type: "stage", stage: "tasks" });
 for (const task of ordered) {
-  if (resume && done.has(task.id)) continue;
+  const title = task.brief.split("\n")[0].slice(0, 120);
+  emit({ type: "task_start", id: task.id, title, model: luna });
+  if (resume && done.has(task.id)) {
+    const row = readResults(resultsFile).find((item) => item.id === task.id);
+    emit({ type: "task_end", id: task.id, pass: row.acceptance === "pass", rounds: row.rounds, cost: row.providerCost });
+    continue;
+  }
   const held = holdStatus();
   if (held.code === 75) stopForHold(planRel, runDir, held.out.trim() || "quota hold");
 
@@ -463,6 +512,7 @@ for (const task of ordered) {
   const testSource = fs.readFileSync(testAbs, "utf8");
   const before = runTests(work, [task.acceptanceTest], pythonProject);
   if (before.code === 0) fail(`${task.id} acceptance test already passes at ${commit}. The plan gate failed.`);
+  emit({ type: "notice", text: `${task.id} acceptance gate passed (test fails before implementation)` });
   const anchors = {
     ...difficultyAnchors(task, plan, work, commit, testSource),
     Q8: null,
@@ -474,6 +524,7 @@ for (const task of ordered) {
     "",
   );
   const difficulty = await battery(DIFFICULTY_QUESTIONS, difficultyState.state);
+  checkInterrupted();
   const taskDir = path.join(runDir, "tasks", task.id);
   fs.mkdirSync(taskDir, { recursive: true });
   const dbPath = path.join(taskDir, "telemetry.db");
@@ -482,12 +533,15 @@ for (const task of ordered) {
   delete env.PI_BUILD_RETRY;
   delete env.PI_OFFLINE;
   const run = await runPiWithContinuation(luna, lunaThinking, lunaPrompt(task), work, env, logPath,
-    path.join(taskDir, "session"), () => stopForHold(planRel, runDir, `${task.id} exited 75`));
+    path.join(taskDir, "session"), "editor", task.id,
+    () => stopForHold(planRel, runDir, `${task.id} exited 75`));
+  if (run.code !== 0) emit({ type: "notice", text: `${task.id} child exited ${run.code}` });
 
   const stats = inferenceStats(dbPath);
   if (!pinChecked) {
     pinChecked = true;
     if (!modelMatches(stats.model, luna)) {
+      emit({ type: "notice", text: `${task.id} model mismatch: ${stats.model || "(none)"}, expected ${luna}` });
       fail(`${task.id} first inference model is ${stats.model || "(none)"}, not ${luna}`);
     }
   }
@@ -500,12 +554,13 @@ for (const task of ordered) {
   })();
   const diffFiles = parseUnifiedDiff(stagedPreview);
   const conformance = checkConformance(task, diffFiles, protectedList);
-  const finalOutput = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+  const finalOutput = fs.existsSync(logPath) ? finalText(fs.readFileSync(logPath, "utf8")) : "";
   const qualityState = fitState(
     [`brief:\n${task.brief}`, `final_output:\n${finalOutput}`],
     `diff:\n${taskDiff(stagedPreview, task.file)}`,
   );
   const quality = await battery(QUALITY_QUESTIONS, qualityState.state);
+  checkInterrupted();
   anchors.Q8 = q8(stagedPreview);
   anchors.Q10 = conformance.removedExports.length > 0;
   if (stagedPreview.trim()) git(work, ["commit", "-m", `plan: ${task.id}`]);
@@ -530,8 +585,11 @@ for (const task of ordered) {
   };
   appendResult(resultsFile, row);
   fs.writeFileSync(path.join(taskDir, "row.json"), `${JSON.stringify(row, null, 2)}\n`);
+  emit({ type: "task_end", id: task.id, pass: graded.code === 0, rounds: stats.rounds, cost: stats.cost });
+  if (graded.code !== 0) emit({ type: "notice", text: `${task.id} acceptance failed: ${graded.out.slice(0, 240)}` });
 }
 
+emit({ type: "stage", stage: "integration" });
 const integrationMarker = path.join(runDir, "integration.json");
 if (!(resume && fs.existsSync(integrationMarker))) {
   const held = holdStatus();
@@ -545,7 +603,9 @@ if (!(resume && fs.existsSync(integrationMarker))) {
   const commands = testCommands(collectTestFiles(work, tests), { pythonProject });
   const prompt = solPrompt(planRel, resultsFile, commands, path.join(runDir, "report.md"), plan.spec);
   const run = await runPiWithContinuation(sol, solThinking, prompt, work, env, logPath,
-    path.join(runDir, "integration-session"), () => stopForHold(planRel, runDir, "integration exited 75"));
+    path.join(runDir, "integration-session"), "integration", undefined,
+    () => stopForHold(planRel, runDir, "integration exited 75"));
+  if (run.code !== 0) emit({ type: "notice", text: `integration child exited ${run.code}` });
   commitAll(work, "plan: integration");
   const names = git(work, ["diff", "--name-only", before, "HEAD"])
     .split("\n")
@@ -573,11 +633,13 @@ const protectedDiff = (() => {
 fs.writeFileSync(path.join(runDir, "protected-edits.diff"), protectedDiff);
 restoreProtected(work, commit, protectedList);
 
+emit({ type: "stage", stage: "grade" });
 let typecheck = { code: null, out: "no tsconfig.json" };
 if (fs.existsSync(path.join(work, "tsconfig.json"))) {
   try {
     const out = execFileSync("npx", ["tsc", "--noEmit"], {
       cwd: work,
+      env: testEnv(process.env),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 16 * 1024 * 1024,
@@ -597,4 +659,9 @@ const grade = {
   planTests: { code: planResult.code, out: planResult.out },
 };
 writeGrade(runDir, grade);
-console.log(JSON.stringify({ commit, results: resultsFile, grade: path.join(runDir, "grade.json") }));
+if (progressMode) {
+  const ok = specResult.code === 0 && planResult.code === 0 && (typecheck.code === null || typecheck.code === 0);
+  emit({ type: "done", ok, summary: `runner grade: spec ${specResult.code === 0 ? "pass" : "fail"}, plan ${planResult.code === 0 ? "pass" : "fail"}, typecheck ${typecheck.code === null ? "not run" : typecheck.code === 0 ? "pass" : "fail"}` });
+} else {
+  console.log(JSON.stringify({ commit, results: resultsFile, grade: path.join(runDir, "grade.json") }));
+}

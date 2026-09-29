@@ -4,7 +4,7 @@
 // All decisions are made by lib/quota.ts (tested). This file only moves data
 // between pi and that module.
 //
-// Verified against @earendil-works/pi-coding-agent 0.87.1:
+// Verified against @earendil-works/pi-coding-agent 0.99.1:
 //   ExtensionAPI is the type the other extensions import.
 //   ctx.model.provider is the active provider id. ctx.model may be undefined.
 //   ctx.modelRegistry.getApiKeyForProvider(provider) => Promise<string | undefined>.

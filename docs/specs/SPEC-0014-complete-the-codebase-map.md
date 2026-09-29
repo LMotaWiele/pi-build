@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | ready |
+| Status | implemented |
 | Size | staged (3 stages) |
 | Kind | build |
 | Parent | SPEC-0007 |

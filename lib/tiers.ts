@@ -11,16 +11,17 @@ export interface RetryTarget {
 
 export const CODEX = {
   luna: "openai-codex/gpt-6-luna",
-  sol: "openai-codex/gpt-6-sol",
+  sol: "openai-codex/gpt-6.1-sol",
   astra: "openai-codex/gpt-6-astra",
-  solFallback: "openai-codex/gpt-5.6-sol",
+  solFallback: "openai-codex/gpt-6-sol",
+  solLegacy: "openai-codex/gpt-5.6-sol",
 } as const;
 
 const HIGH_OR_ABOVE = new Set(["high", "xhigh", "max"]);
 
-// Family by model name, for GPT-5.6 and GPT-6, whatever the provider prefix.
+// Family by model name across GPT versions, whatever the provider prefix.
 export function familyOf(model: string): Family | null {
-  const m = model.match(/gpt-(?:5\.6|6)-(luna|terra|sol|astra)$/);
+  const m = model.match(/(?:^|\/)gpt-\d+(?:\.\d+)?-(luna|terra|sol|astra)$/);
   return m ? (m[1] as Family) : null;
 }
 
@@ -34,10 +35,9 @@ export function nextTier(
   resolves: (id: string) => boolean,
 ): RetryTarget | null {
   const f = familyOf(model);
-  const solHigh: RetryTarget[] = [
-    { model: CODEX.sol, thinking: "high" },
-    { model: CODEX.solFallback, thinking: "high" },
-  ];
+  const solHigh: RetryTarget[] = [CODEX.sol, CODEX.solFallback, CODEX.solLegacy]
+    .map((model) => ({ model, thinking: "high" }));
+  // Luna's medium step applies only to the primary Sol; fallbacks run at high.
   if (f === "luna") return firstResolving([{ model: CODEX.sol, thinking: "medium" }, ...solHigh.slice(1)], resolves);
   if (f === "terra") return firstResolving(solHigh, resolves);
   if (f === "sol") return HIGH_OR_ABOVE.has(thinking ?? "") ? null : firstResolving(solHigh, resolves);

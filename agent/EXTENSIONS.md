@@ -39,6 +39,10 @@ No second context rewriter is stacked on either seam.
 
 The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`). Bounds escalates stuck work only when that file is absent and `PI_BUILD_RETRY` is not `0`; budgets never retry. `bin/pi-continue` clears weekly holds. Thresholds come from `quotaGate` settings via `readPiSettings()`; `PI_BUILD_QUOTA_5H` and `PI_BUILD_QUOTA_WEEKLY` override them.
 
+## Pipeline tool
+
+`extensions/pipeline.ts` owns the `implement_spec` tool and subscribes to no events.
+
 ## Map
 
 `extensions/map.ts` writes no section key and rewrites no context or tool result, so it is outside the invalidation count. It reads `tool_result` inputs for paths and, on `agent_end`, spawns `tools/map` without awaiting it when a path fell inside the project. One build runs at a time per process; the explain and recap one-shots do not load it.

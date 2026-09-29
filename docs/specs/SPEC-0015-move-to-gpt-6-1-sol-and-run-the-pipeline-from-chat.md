@@ -1,4 +1,4 @@
-# SPEC-NNNN: Move to GPT-6.1 Sol, fix the pipeline's loose ends, and run the pipeline from the chat
+# SPEC-0015: Move to GPT-6.1 Sol, fix the pipeline's loose ends, and run the pipeline from the chat
 
 | Field | Value |
 |---|---|
@@ -8,7 +8,7 @@
 | Parent | SPEC-0010 |
 | Date | 2026-09-30 |
 | Checkpoint | continuous |
-| Run record | /docs/specs/SPEC-NNNN-run.md |
+| Run record | /docs/specs/SPEC-0015-run.md |
 
 Replace `NNNN` in this file's name, its `.tests/` directory and the run record with the next free spec ID — `0015` as of `e447f0b`. Confirm it is free.
 

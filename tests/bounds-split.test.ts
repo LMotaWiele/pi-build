@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import boundsExtension from "../extensions/bounds.ts";
+import { CODEX } from "../lib/tiers.ts";
 import { clearHold, writeHold } from "../lib/quota.ts";
 import {
   beginUserTurn,
@@ -196,7 +197,7 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
     beginUserTurn("sess", "original prompt");
     noteWrittenFile("src/a.ts");
     const model = { provider: "openai-codex", id: "gpt-6-luna" };
-    const sol = { provider: "openai-codex", id: "gpt-6-sol" };
+    const sol = { provider: "openai-codex", id: CODEX.sol.split("/")[1] };
     let aborted = false;
     const ctx = {
       abort() {
@@ -231,7 +232,7 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
 
 function registry() {
   const luna = { provider: "openai-codex", id: "gpt-6-luna" };
-  const sol = { provider: "openai-codex", id: "gpt-6-sol" };
+  const sol = { provider: "openai-codex", id: CODEX.sol.split("/")[1] };
   return {
     getAll: () => [luna, sol],
     find: (provider: string, id: string) => [luna, sol].find((candidate) => candidate.provider === provider && candidate.id === id),

@@ -123,11 +123,11 @@ ok "patches (${#patch_files[@]})"
 
 node --experimental-strip-types "$REPO/lib/hook-budget.ts" || fail "hook trace exceeds the invalidation maximum"
 
-(cd "$REPO" && node --experimental-strip-types --test tests/*.test.ts) || fail "unit tests"
+(cd "$REPO" && env -u PI_BUILD_PIPELINE -u PI_BUILD_SUBAGENT_ROLE -u PI_BUILD_TELEMETRY_DB node --experimental-strip-types --test tests/*.test.ts) || fail "unit tests"
 ok "unit tests"
 
 if command -v uv >/dev/null; then
-  uv run --project "$REPO/tools/map" pytest -q "$REPO/tools/map" || fail "map tests"
+  env -u PI_BUILD_PIPELINE -u PI_BUILD_SUBAGENT_ROLE -u PI_BUILD_TELEMETRY_DB uv run --project "$REPO/tools/map" pytest -q "$REPO/tools/map" || fail "map tests"
   ok "map tests"
 else
   echo "skipped: uv not installed"

@@ -1,6 +1,6 @@
 # pi-build
 
-Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.87.1). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, a pinned session model, and a local record of what the tools did.
+Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.99.1). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, a pinned session model, and a local record of what the tools did.
 
 The clone can live anywhere. `install.sh` symlinks it into `~/.pi/agent/`.
 
@@ -28,7 +28,7 @@ Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, `bou
 - [uv](https://docs.astral.sh/uv/) is optional. The map needs it; everything else runs without it.
 - [mise](https://mise.jdx.dev/) is optional. If it is missing and Node is new enough, install continues.
 
-Pi is installed globally at 0.87.1 by the script (`npm i -g @earendil-works/pi-coding-agent@0.87.1`).
+Pi is installed globally at 0.99.1 by the script (`npm i -g @earendil-works/pi-coding-agent@0.99.1`).
 
 ## Install
 
@@ -42,7 +42,7 @@ The directory name does not matter. Clone it wherever you keep source.
 
 `install.sh` does five things:
 
-1. Installs pi 0.87.1 globally.
+1. Installs pi 0.99.1 globally.
 2. Picks `settings/hosts/<hostname>.json`. If that file is missing, it falls back to `settings/hosts/machina.json` and says so. That file is the author's model list. Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` and put your own provider ids there before you rely on the fallback. `PI_HOST=machina ./install.sh` forces the author's host file.
 3. Symlinks that host file to `~/.pi/agent/settings.json`, and symlinks `agent/AGENTS.md`, `agent/models.json`, `settings/web-search.json`, `extensions/`, `skills/`, and `lib/` into `~/.pi/agent/`. Pi loads `~/.pi/agent/extensions` and `~/.pi/agent/skills` on its own, which is why the host file does not contain a machine path. `lib/` is linked too, because the extensions import `../lib` and Pi resolves that path from the symlink. If one of those destinations already exists as a real file or directory, the script stops and tells you to move it aside.
 4. Creates `~/.config/pi/env` (mode 600) from `secrets.example.env` when the file is missing. Pi does not load this file. Export it yourself (see below).
@@ -115,7 +115,7 @@ The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `p
 
 ## Developing with pi
 
-Write a spec in the current template with its sibling `.tests/` directory. From this repository, preview the run with `bin/pi-implement <spec> --dry-run`, then start it with `bin/pi-implement <spec>`. Review the resulting branch, run record and report before merging. If something later proves wrong, use `bin/pi-rework`.
+Write a spec in the current template with its sibling `.tests/` directory. Ask pi to implement it with `implement_spec`: the pipeline runs as a tool call in the chat, streaming progress while the session waits. The terminal route remains available: from this repository, preview the run with `bin/pi-implement <spec> --dry-run`, then start it with `bin/pi-implement <spec>`. Review the resulting branch, run record and report before merging. If something later proves wrong, use `bin/pi-rework`.
 
 Stuck loops receive a nudge, then escalate through the retry ladder; token and cost budgets stop the turn instead of retrying. The 5-hour quota window pauses and resumes automatically. The weekly window holds for you; release it with `bin/pi-continue`. Use `bin/pi-implement <spec> --resume` to continue a held pipeline run.
 

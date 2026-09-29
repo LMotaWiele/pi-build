@@ -1,5 +1,5 @@
 /**
- * Keys in settings/hosts/example.json that pi 0.87.1 reads itself.
+ * Keys in settings/hosts/example.json that pi 0.99.1 reads itself.
  * Doctor requires every example.json key to appear as a string literal under extensions/ or lib/.
  */
 import fs from "node:fs";
