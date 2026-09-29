@@ -1,13 +1,13 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-6-sol",
+  "defaultModel": "gpt-6.1-sol",
   "enabledModels": [
-    "openai-codex/gpt-6-sol",
+    "openai-codex/gpt-6.1-sol",
     "openai-codex/gpt-6-luna",
     "openai-codex/gpt-6-astra"
   ],
   "modelThinkingLevels": {
-    "openai-codex/gpt-6-sol": "medium",
+    "openai-codex/gpt-6.1-sol": "medium",
     "openai-codex/gpt-6-luna": "medium",
     "openai-codex/gpt-6-astra": "high"
   },
@@ -82,8 +82,8 @@
     "enabled": false,
     "tiers": {
       "scout": "openai-codex/gpt-6-luna",
-      "work": "openai-codex/gpt-6-sol",
-      "escalate": "openai-codex/gpt-6-sol",
+      "work": "openai-codex/gpt-6.1-sol",
+      "escalate": "openai-codex/gpt-6.1-sol",
       "explain": "openai-codex/gpt-6-luna"
     }
   },
