@@ -239,4 +239,4 @@ Continuation: update the run record after each stage exit and each repair round.
 
 ## 11. Landing
 
-Filled from the review.
+Landed 2026-09-29 after review; implemented by pi. The first delegated run (V14) completed end to end — gate passed, two Luna tasks, integration, Node and uv spec tests passing, branch handed off — at $0.26, 98% of it Sol. Deviations: budgets raised to 50M tokens and $30, and tests/read-guard.test.ts changed, both by Lucas; stage commits collapsed; the runner excludes .agent/ from commits (V14 repair). Open: explain runs inside pipeline children — for the explain spec; live quota exhaustion and the print-mode --continue relaunch are unexercised. Correction: the no-commit rule was real — see the run record.
