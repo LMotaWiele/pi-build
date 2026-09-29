@@ -30,7 +30,7 @@ V15 `index.test.ts`: passed. V16 `./doctor.sh --offline` and `./doctor.sh --proj
 
 ## Final-commit acceptance
 
-Pending the run-record commit and integrated checks at that commit.
+At implementation commit `918b06f`, `node --experimental-strip-types --test docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/*.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/{plan,quota}.test.ts tests/{bounds-split,pi-rework,read-guard,plan}.test.ts` passed 85/85. `./doctor.sh --offline` and `./doctor.sh --project .` both exited 0. The final run-record-only commit was followed by the same checks at its tip; no production or protected files changed after `918b06f`.
 
 ## Deviations and handoff
 
