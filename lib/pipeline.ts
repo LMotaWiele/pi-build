@@ -6,6 +6,33 @@ import { countVerifyChecks } from "./plan.ts";
 
 const TEST_ENV_KEYS = ["PI_BUILD_PIPELINE", "PI_BUILD_SUBAGENT_ROLE", "PI_BUILD_TELEMETRY_DB"] as const;
 
+export function childPiArgs(input: {
+  model: string;
+  thinking: string;
+  prompt: string;
+  sessionDir: string;
+  continuing?: boolean;
+}): string[] {
+  return [
+    "--mode", "json",
+    "--model", input.model,
+    "--thinking", input.thinking,
+    "--session-dir", input.sessionDir,
+    ...(input.continuing ? ["--continue"] : []),
+    "--approve",
+    "-p", input.prompt,
+  ];
+}
+
+export function implementArgs(input: { spec: string; planOnly?: boolean; resume?: boolean }): string[] {
+  return [
+    input.spec,
+    "--progress", "json",
+    ...(input.planOnly ? ["--plan-only"] : []),
+    ...(input.resume ? ["--resume"] : []),
+  ];
+}
+
 export function testEnv(base: Record<string, string | undefined>): Record<string, string | undefined> {
   const env = { ...base };
   for (const key of TEST_ENV_KEYS) delete env[key];
