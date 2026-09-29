@@ -3,7 +3,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")" && pwd)"
 HOST="${PI_HOST:-$(hostname)}"
 PI_PACKAGE="${PI_PACKAGE:-@earendil-works/pi-coding-agent}"
-PI_VERSION="${PI_VERSION:-0.87.1}"
+PI_VERSION="${PI_VERSION:-0.99.1}"
 
 node_ok() {
   node -e 'const [M,m,p]=(process.versions.node.split(".").map(Number)); if (M>22 || (M===22 && (m>19 || (m===19 && p>=0)))) process.exit(0); process.exit(1);'
