@@ -28,6 +28,7 @@ from .views.treemap import build_treemap
 from .walk import WalkedFile, any_match, walk
 
 _EXPLAIN_MARKER = re.compile(r"^<!--\s*turn:\s*(\S+)\s*-->")
+_EXPLAIN_FILENAME = re.compile(r"^\d{4}-\d{2}-\d{2}-turn-(.+)\.md$")
 
 
 @dataclass
@@ -236,8 +237,13 @@ def _explain_links(repo: Path, explain_dir: str) -> dict[str, list[str]]:
         except OSError:
             continue
         match = _EXPLAIN_MARKER.match(first.strip())
-        if match:
-            links.setdefault(match.group(1), []).append(path.relative_to(repo).as_posix())
+        turn_id = match.group(1) if match else None
+        if turn_id is None:
+            filename_match = _EXPLAIN_FILENAME.fullmatch(path.name)
+            if filename_match:
+                turn_id = filename_match.group(1)
+        if turn_id:
+            links.setdefault(turn_id, []).append(path.relative_to(repo).as_posix())
     return links
 
 
