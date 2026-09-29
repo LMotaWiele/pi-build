@@ -154,6 +154,10 @@ const resultRows = fs.existsSync(path.join(dir, "results.jsonl")) ? read(path.jo
 const protectedDiff = fs.existsSync(path.join(dir, "protected-edits.diff")) ? read(path.join(dir, "protected-edits.diff")) : "";
 // The runner commits in its detached worktree. Fast-forward only our review branch.
 const finished = git(nested, "rev-parse", "HEAD");
+// Planning sessions can generate local walkthroughs on this worktree. They are
+// not part of the plan commit and must not block the fast-forward handoff.
+git(work, "restore", "--worktree", "--", ".agent");
+git(work, "clean", "-fd", "--", ".agent");
 git(work, "merge", "--ff-only", finished);
 const report = path.join(dir, "report.md");
 if (!fs.existsSync(report)) exit(`integration did not write ${report}`);

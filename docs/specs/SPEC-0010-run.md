@@ -16,7 +16,7 @@ V7 `verify-count.test.ts`, V8 `specs.test.ts` and `tests/pi-rework.test.ts`, V9 
 
 ## Stage 3 — entry point and runner
 
-V11 `bin/pi-implement 9 --dry-run`: exit 0; printed paths, 13 checks, Sol/high, Luna/medium and the Node test command, with no model call. V12 `bin/pi-implement 7 --dry-run`: exit 2, named missing verification and tests. V13 with `PI_BUILD_QUOTA_HOLD` pointing to a temporary weekly hold: exit 75. V14 live scratch-worktree smoke: pending the committed baseline and scratch run. No repair rounds yet.
+V11 `bin/pi-implement 9 --dry-run`: exit 0; printed paths, 13 checks, Sol/high, Luna/medium and the Node test command, with no model call. V12 `bin/pi-implement 7 --dry-run`: exit 2, named missing verification and tests. V13 with `PI_BUILD_QUOTA_HOLD` pointing to a temporary weekly hold: exit 75. V14 repair round 1: baseline `715cd8c`, scratch fixture commit `ce735d0`. The pipeline gate passed, Luna T1/T2 and integration ran, and final Node and Python spec tests plus plan tests passed (`grade.json`). Handoff failed: pi generated `.agent/explain/` changes in both worktrees; runner's `git add -A` committed generated files, and fast-forward refused to overwrite branch-local generated files. Repair: exclude `.agent/` from runner commits, and restore/clean only `.agent/` in the pipeline's branch worktree immediately before fast-forward. New testable diagnosis, retry pending.
 
 ## Stage 4 — index and docs
 

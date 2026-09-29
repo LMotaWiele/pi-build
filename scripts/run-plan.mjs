@@ -389,7 +389,8 @@ function ensureWorktree(runDir, commit) {
 }
 
 function commitAll(work, message) {
-  git(work, ["add", "-A"]);
+  // Session walkthroughs are generated state, not implementation changes.
+  git(work, ["add", "-A", "--", ".", ":!.agent"]);
   const staged = git(work, ["diff", "--cached"]);
   if (!staged.trim()) return "";
   git(work, ["commit", "-m", message]);
@@ -494,7 +495,7 @@ for (const task of ordered) {
   restoreProtected(work, commit, protectedList);
   const graded = runTests(work, [task.acceptanceTest], pythonProject);
   const stagedPreview = (() => {
-    git(work, ["add", "-A"]);
+    git(work, ["add", "-A", "--", ".", ":!.agent"]);
     return git(work, ["diff", "--cached"]);
   })();
   const diffFiles = parseUnifiedDiff(stagedPreview);
