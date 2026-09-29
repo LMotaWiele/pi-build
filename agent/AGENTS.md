@@ -12,6 +12,8 @@ Explanations are not notes. The harness writes walkthroughs under `.agent/explai
 
 Commit your own work, with messages naming the task. Never push, force-push, or rewrite commits you didn't make.
 
+When a spec's final acceptance passes in an interactive session, set its status to `implemented` in its header and in `/docs/specs/index.md`, with Implemented by.
+
 ## Models
 
 This session sets its model with setModel before the first inference of a turn. Do not switch models in the middle of a turn. The resolved tier map is injected from the host file. Do not copy model ids into this file.

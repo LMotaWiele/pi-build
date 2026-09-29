@@ -3,12 +3,13 @@
  * Opening the database is lazy. A failure here must not take an extension down.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { findProjectRoot } from "./scaffold.ts";
 
 export function estimateTokens(text: string): number {
   if (!text) return 0;
@@ -36,6 +37,8 @@ interface TelemetryBag {
   filesWritten: string[];
   db: Db | null;
   dbFailed: boolean;
+  projectRoot: string | null;
+  subagentRole: string | null;
   recordedIds: Set<string>;
   annotations: Map<string, Partial<ToolCallRow>>;
   startedAt: Map<string, number>;
@@ -83,6 +86,8 @@ function freshBag(): TelemetryBag {
     filesWritten: [],
     db: null,
     dbFailed: false,
+    projectRoot: null,
+    subagentRole: process.env.PI_BUILD_SUBAGENT_ROLE?.trim() || null,
     recordedIds: new Set(),
     annotations: new Map(),
     startedAt: new Map(),
@@ -337,7 +342,10 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   elapsed_ms INTEGER,
   outcome TEXT,
   blocked_by TEXT,
-  parent_turn_id TEXT
+  parent_turn_id TEXT,
+  tool_call_id TEXT,
+  project_root TEXT,
+  subagent_role TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tool_path ON tool_calls(session_id, path);
 
@@ -356,7 +364,9 @@ CREATE TABLE IF NOT EXISTS inference_calls (
   ttft_ms INTEGER,
   elapsed_ms INTEGER,
   cost_usd REAL,
-  parent_turn_id TEXT
+  parent_turn_id TEXT,
+  project_root TEXT,
+  subagent_role TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ab_trials (
@@ -451,6 +461,21 @@ function ensureColumn(store: Db, table: string, column: string): void {
   store.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
 }
 
+/** The git common directory belongs to the main checkout even in a linked worktree. */
+export function telemetryProjectRoot(cwd: string): string {
+  try {
+    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (common && path.isAbsolute(common)) return path.dirname(common);
+  } catch {
+    // Scratch directories use the same project-root discovery as the rest of the harness.
+  }
+  return findProjectRoot(cwd);
+}
+
 export function telemetryPath(): string {
   if (process.env.PI_BUILD_TELEMETRY_DB) return process.env.PI_BUILD_TELEMETRY_DB;
   const dir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
@@ -468,6 +493,8 @@ function database(): Db | null {
     opened.exec(SCHEMA);
     ensureColumn(opened, "tool_calls", "parent_turn_id");
     ensureColumn(opened, "inference_calls", "parent_turn_id");
+    for (const column of ["tool_call_id", "project_root", "subagent_role"]) ensureColumn(opened, "tool_calls", column);
+    for (const column of ["project_root", "subagent_role"]) ensureColumn(opened, "inference_calls", column);
     state.db = opened;
     return state.db;
   } catch (err) {
@@ -498,8 +525,8 @@ export function recordToolCall(row: ToolCallRow): void {
     store
       .prepare(
         `INSERT INTO tool_calls
-          (ts, session_id, turn_id, loop_index, tool_name, arguments, path, result_bytes, elapsed_ms, outcome, blocked_by, parent_turn_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (ts, session_id, turn_id, loop_index, tool_name, arguments, path, result_bytes, elapsed_ms, outcome, blocked_by, parent_turn_id, tool_call_id, project_root, subagent_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         Date.now(),
@@ -514,6 +541,9 @@ export function recordToolCall(row: ToolCallRow): void {
         row.outcome,
         row.blockedBy ?? null,
         currentParentTurnId(),
+        row.toolCallId ?? null,
+        bag().projectRoot,
+        bag().subagentRole,
       );
   } catch (err) {
     console.error("[telemetry] tool_calls insert failed", err);
@@ -567,8 +597,8 @@ export function recordInference(row: InferenceRow): void {
     store
       .prepare(
         `INSERT INTO inference_calls
-          (ts, session_id, turn_id, loop_index, tier, model, prompt_tokens, cached_tokens, completion_tokens, reasoning_tokens, ttft_ms, elapsed_ms, cost_usd, parent_turn_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (ts, session_id, turn_id, loop_index, tier, model, prompt_tokens, cached_tokens, completion_tokens, reasoning_tokens, ttft_ms, elapsed_ms, cost_usd, parent_turn_id, project_root, subagent_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         Date.now(),
@@ -585,6 +615,8 @@ export function recordInference(row: InferenceRow): void {
         row.elapsedMs ?? null,
         row.costUsd ?? null,
         currentParentTurnId(),
+        bag().projectRoot,
+        bag().subagentRole,
       );
   } catch (err) {
     console.error("[telemetry] inference_calls insert failed", err);
@@ -864,7 +896,9 @@ export function attachTelemetry(pi: TelemetryHost, extensionName = "unnamed"): v
   state.attached = true;
   try {
     pi.on("agent_start", (_event, ctx) => {
-      const turn = bag().turn;
+      const state = bag();
+      state.projectRoot = telemetryProjectRoot(typeof ctx.cwd === "string" ? ctx.cwd : process.cwd());
+      const turn = state.turn;
       const session = sessionIdOf(ctx);
       if (turn.sessionId !== session || !turn.turnId) beginUserTurn(session, turn.prompt);
     });
@@ -1053,8 +1087,8 @@ export function explainOneShot(env: NodeJS.ProcessEnv = process.env): boolean {
  * `PI_BUILD_PARENT_TURN` is this process's turn, so the child's rows join here
  * instead of opening a second root. An inherited grandparent id is replaced.
  */
-export function explainSpawnEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base, PI_BUILD_EXPLAIN_ONESHOT: "1" };
+export function explainSpawnEnv(base: NodeJS.ProcessEnv = process.env, role = "explain"): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, PI_BUILD_EXPLAIN_ONESHOT: "1", PI_BUILD_SUBAGENT_ROLE: role };
   delete env.PI_BUILD_TELEMETRY_DB;
   delete env.PI_OFFLINE;
   for (const key of Object.keys(env)) {

@@ -143,7 +143,7 @@ export default function recapExtension(pi: ExtensionAPI): void {
             timeout: 120_000,
             maxBuffer: 8_000_000,
             cwd: ctx.cwd || cwd,
-            env: explainSpawnEnv(),
+            env: explainSpawnEnv(process.env, "recap"),
           });
           summary = extractAssistantText(result.stdout) || result.stdout.trim();
         } catch (err) {

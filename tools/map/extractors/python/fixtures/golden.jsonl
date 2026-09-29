@@ -27,6 +27,14 @@
 {"dst_ref":"py:sample.py::Point","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":25,"line":22,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
 {"dst_ref":"py:sample.py::Row","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":36,"line":34,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
 {"dst_ref":"py:sample.py::Store","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":53,"line":39,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
+{"dst_ref":"py:sample.py::Store","kind":"member_of","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":42,"line":40,"path":"sample.py"}},"src":"py:sample.py::Store.__init__","type":"Relation"}
+{"dst_ref":"py:sample.py::Store","kind":"member_of","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":45,"line":44,"path":"sample.py"}},"src":"py:sample.py::Store.load","type":"Relation"}
+{"dst_ref":"py:sample.py::Store","kind":"member_of","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":48,"line":47,"path":"sample.py"}},"src":"py:sample.py::Store.save","type":"Relation"}
+{"dst_ref":"py:sample.py::Store","kind":"member_of","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":53,"line":50,"path":"sample.py"}},"src":"py:sample.py::Store.dump","type":"Relation"}
+{"dst_ref":"py:sample.py::Store.__init__","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":42,"line":40,"path":"sample.py"}},"src":"py:sample.py::Store","type":"Relation"}
+{"dst_ref":"py:sample.py::Store.dump","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":53,"line":50,"path":"sample.py"}},"src":"py:sample.py::Store","type":"Relation"}
+{"dst_ref":"py:sample.py::Store.load","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":45,"line":44,"path":"sample.py"}},"src":"py:sample.py::Store","type":"Relation"}
+{"dst_ref":"py:sample.py::Store.save","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":48,"line":47,"path":"sample.py"}},"src":"py:sample.py::Store","type":"Relation"}
 {"dst_ref":"py:sample.py::read_config","kind":"defines","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":58,"line":56,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
 {"dst_ref":"sqlite3","kind":"imports","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":2,"line":2,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
 {"dst_ref":"typing","kind":"imports","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":6,"line":6,"path":"sample.py"}},"src":"py:sample.py","type":"Relation"}
@@ -55,4 +63,8 @@
 {"id":"py:sample.py::Point","kind":"dataclass","name":"Point","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":25,"line":22,"path":"sample.py"}},"type":"Entity"}
 {"id":"py:sample.py::Row","kind":"typeddict","name":"Row","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":36,"line":34,"path":"sample.py"}},"type":"Entity"}
 {"id":"py:sample.py::Store","kind":"class","name":"Store","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":53,"line":39,"path":"sample.py"}},"type":"Entity"}
+{"id":"py:sample.py::Store.__init__","kind":"method","name":"__init__","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":42,"line":40,"path":"sample.py"}},"type":"Entity"}
+{"id":"py:sample.py::Store.dump","kind":"method","name":"dump","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":53,"line":50,"path":"sample.py"}},"type":"Entity"}
+{"id":"py:sample.py::Store.load","kind":"method","name":"load","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":45,"line":44,"path":"sample.py"}},"type":"Entity"}
+{"id":"py:sample.py::Store.save","kind":"method","name":"save","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":48,"line":47,"path":"sample.py"}},"type":"Entity"}
 {"id":"py:sample.py::read_config","kind":"function","name":"read_config","origin":{"extractor":"python.structure@1","provenance":"extracted","source":{"end_line":58,"line":56,"path":"sample.py"}},"type":"Entity"}

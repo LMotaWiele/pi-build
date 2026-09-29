@@ -10,14 +10,13 @@
 
 (enum_declaration name: (identifier) @entity.name) @entity.enum
 
-(export_statement
-  declaration: (function_declaration name: (identifier) @entity.name) @entity.function)
+(function_declaration name: (identifier) @entity.name) @entity.function
 
-(export_statement
-  declaration: (lexical_declaration
-    (variable_declarator
-      name: (identifier) @entity.name
-      value: [(arrow_function) (function_expression)]) @entity.function))
+(variable_declarator
+  name: (identifier) @entity.name
+  value: [(arrow_function) (function_expression)]) @entity.function
+
+(method_definition name: (_) @entity.name) @entity.method
 
 ; Members.
 (interface_declaration

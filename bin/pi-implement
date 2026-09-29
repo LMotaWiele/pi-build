@@ -6,8 +6,8 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { countVerifyChecks, pipelineThinking, undeclaredImports, validatePlan } from "../lib/plan.ts";
-import { preflight, testCommands } from "../lib/pipeline.ts";
-import { resolveSpec, specPaths } from "../lib/specs.ts";
+import { childEnv, pipelineRunRoot, preflight, testCommands } from "../lib/pipeline.ts";
+import { markImplemented, resolveSpec, specPaths } from "../lib/specs.ts";
 import { defaultHoldPath, readHold } from "../lib/quota.ts";
 import { readPiSettings } from "../lib/telemetry.ts";
 
@@ -45,7 +45,7 @@ function usage(db) {
 }
 function pi(work, model, thinking, prompt, log, db) {
   const result = run("pi", ["--model", model, "--thinking", thinking, "--approve", "-p", prompt], work,
-    { env: { ...process.env, PI_BUILD_PIPELINE: "1", PI_BUILD_TELEMETRY_DB: db } });
+    { env: childEnv(process.env, "planner", db) });
   write(log, result.output);
   if (result.code === 75) exit(`Quota hold; resume with bin/pi-implement ${query} --resume`, 75);
   return result;
@@ -79,7 +79,7 @@ if (flags.has("--dry-run")) {
     checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands }, null, 2));
   process.exit(0);
 }
-const base = path.join(os.homedir(), "var/pipeline-runs", `SPEC-${spec.id}-${spec.slug}`);
+const base = path.join(pipelineRunRoot(settings, os.homedir()), `SPEC-${spec.id}-${spec.slug}`);
 const existing = fs.existsSync(base) ? fs.readdirSync(base).sort().reverse().find((s) => fs.existsSync(path.join(base, s, "pipeline.json"))) : undefined;
 if (flags.has("--resume") && !existing) exit(`no run to resume for SPEC-${spec.id}`, 2);
 const stamp = flags.has("--resume") ? existing : new Date().toISOString().replace(/[:.]/g, "-");
@@ -97,7 +97,7 @@ const workPlan = path.join(work, planRel, "plan.json");
 const specTests = filesIn(path.join(work, testRel), testRel);
 if (!fs.existsSync(workPlan)) {
   const created = pi(work, planner, levels.planner, planPrompt(specRel, planRel, check.checks),
-    path.join(dir, "planner.log"), path.join(dir, "planner.db"));
+    path.join(dir, "planner.log"), path.join(dir, "planner-telemetry.db"));
   if (created.code !== 0) exit(`planning failed: ${created.output}`);
 }
 let gate = "";
@@ -132,7 +132,7 @@ for (let repair = 0; repair <= 2; repair++) {
   write(path.join(dir, `gate-${repair}.log`), gate);
   if (repair === 2) exit(`plan gate failed after two repairs:\n${gate}`);
   const fixed = pi(work, planner, levels.planner, `Repair the plan and its acceptance tests only. Gate errors:\n${gate}\nDo not implement tasks.`,
-    path.join(dir, `repair-${repair + 1}.log`), path.join(dir, `repair-${repair + 1}.db`));
+    path.join(dir, `repair-${repair + 1}.log`), path.join(dir, `repair-${repair + 1}-telemetry.db`));
   if (fixed.code !== 0) exit(`plan repair failed: ${fixed.output}`);
 }
 git(work, "add", "--", planRel);
@@ -169,10 +169,15 @@ const record = `# SPEC-${spec.id} run\n\nImplemented by: pi pipeline\n\nBranch: 
   `## Tasks\n${resultRows.map((row) => `- ${row.id}: ${row.acceptance}; model ${row.model}; rounds ${row.rounds}; cost $${row.providerCost}`).join("\n")}\n\n` +
   `## Final grade\n\n\`\`\`json\n${JSON.stringify(grade, null, 2)}\n\`\`\`\n\n` +
   `## Runtime\nStuck findings, escalations and pauses: see task session logs and telemetry in ${dir}.\n` +
-  `Provider task cost: $${costs}; planner: ${JSON.stringify(usage(path.join(dir, "planner.db")))}. Quota deltas: see usage snapshots in telemetry.\n\n` +
+  `Provider task cost: $${costs}; planner: ${JSON.stringify(usage(path.join(dir, "planner-telemetry.db")))}. Quota deltas: see usage snapshots in telemetry.\n\n` +
   `## Protected files diff\n\n\`\`\`diff\n${protectedDiff}\n\`\`\`\n\n## Report\n${read(report)}\n`;
 write(runRecord, record);
-git(work, "add", "--", path.relative(work, runRecord), path.relative(work, branchReport));
+const indexPath = path.join(work, "docs/specs/index.md");
+const specPath = path.join(work, specRel);
+const implemented = markImplemented(read(indexPath), read(specPath), spec.id, "pi pipeline");
+write(indexPath, implemented.index);
+write(specPath, implemented.spec);
+git(work, "add", "--", path.relative(work, runRecord), path.relative(work, branchReport), specRel, "docs/specs/index.md");
 git(work, "commit", "-m", `pipeline: record SPEC-${spec.id} run`);
 git(root, "worktree", "remove", "--force", nested);
 git(root, "worktree", "remove", "--force", work);

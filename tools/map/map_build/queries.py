@@ -3,7 +3,7 @@
 Capture vocabulary (version 1). Names starting with `_` are private to a pattern and
 are only passed to the language post-filter.
 
-  @entity.<kind> on the whole node, with @entity.name   → Entity
+  @entity.<kind> on the whole node, with @entity.name   → Entity (nested functions and methods get member_of)
   @field.name, optional @field.type                     → Field (owner: entity in the match, else innermost enclosing entity)
   @relation.inherits / @relation.implements             → Relation (src: same owner rule)
   @import.source, optional @import.name                 → Relation(kind="imports") from the module
@@ -177,10 +177,20 @@ def run_queries(ctx: FileContext, sources: Iterable[str], lang: LanguageSpec, ta
         out.setdefault(Entity(runner.module_id, "module", lang.module_name(ctx.path), runner.origin(ctx.tree.root_node)), None)
 
     for node, kind, captures in entity_matches:
+        # A Python def is a method only when its nearest enclosing named scope
+        # is a class (decorators and blocks are transparent to this lookup).
+        if lang.key == "py" and kind == "function":
+            ancestor = node.parent
+            while ancestor is not None and ancestor.type not in lang.scope_types:
+                ancestor = ancestor.parent
+            if ancestor is not None and ancestor.type == "class_definition":
+                kind = "method"
         entity_id = runner.symbol_id(runner.qualname(node))
         emit("entity", Entity(entity_id, kind, runner.entities[_key(node)][0], runner.origin(node)), captures)
         parent = runner.owner(node)
         emit("relation", Relation(parent or runner.module_id, entity_id, "defines", runner.origin(node)), captures)
+        if parent and kind in ("function", "method"):
+            emit("relation", Relation(entity_id, parent, "member_of", runner.origin(node)), captures)
 
     for captures, setting in zip(matches, settings):
         prefix = str(setting.get("access.prefix") or "")
@@ -190,6 +200,13 @@ def run_queries(ctx: FileContext, sources: Iterable[str], lang: LanguageSpec, ta
             match_owner = runner.symbol_id(runner.qualname(captures[kinds[0]][0]))
         for name_node in captures.get("field.name", []):
             owner = match_owner or runner.owner(name_node)
+            # self.x in __init__ describes the class, not the newly captured method.
+            if lang.key == "py" and "_init" in captures:
+                scope = name_node.parent
+                while scope is not None and scope.type != "function_definition":
+                    scope = scope.parent
+                if scope is not None:
+                    owner = runner.owner(scope)
             if owner is None:
                 continue
             type_nodes = captures.get("field.type", [])

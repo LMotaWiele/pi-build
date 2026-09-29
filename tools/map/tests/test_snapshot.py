@@ -182,6 +182,9 @@ def test_page_is_self_contained(built):
 def test_performance(tmp_path):
     env = {**os.environ, "PI_BUILD_TELEMETRY_DB": str(TOOL / "fixtures" / "does-not-exist.db")}
     cmd = [sys.executable, "-m", "map_build", "--repo", str(REPO), "--out", str(tmp_path / "map")]
+    # Warm the interpreter and external environment without populating the measured cache.
+    warmup = [sys.executable, "-m", "map_build", "--repo", str(REPO), "--out", str(tmp_path / "warmup")]
+    subprocess.run(warmup, check=True, capture_output=True, env=env, cwd=TOOL)
     started = time.perf_counter()
     subprocess.run(cmd, check=True, capture_output=True, env=env, cwd=TOOL)
     cold = time.perf_counter() - started

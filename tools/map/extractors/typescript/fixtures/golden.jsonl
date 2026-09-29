@@ -25,6 +25,12 @@
 {"dst_ref":"ts:sample.ts::Named","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":7,"line":5,"path":"sample.ts"}},"src":"ts:sample.ts","type":"Relation"}
 {"dst_ref":"ts:sample.ts::Row","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":16,"line":9,"path":"sample.ts"}},"src":"ts:sample.ts","type":"Relation"}
 {"dst_ref":"ts:sample.ts::Store","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":46,"line":28,"path":"sample.ts"}},"src":"ts:sample.ts","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store","kind":"member_of","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":35,"line":32,"path":"sample.ts"}},"src":"ts:sample.ts::Store.constructor","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store","kind":"member_of","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":40,"line":37,"path":"sample.ts"}},"src":"ts:sample.ts::Store.save","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store","kind":"member_of","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":45,"line":42,"path":"sample.ts"}},"src":"ts:sample.ts::Store.load","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store.constructor","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":35,"line":32,"path":"sample.ts"}},"src":"ts:sample.ts::Store","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store.load","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":45,"line":42,"path":"sample.ts"}},"src":"ts:sample.ts::Store","type":"Relation"}
+{"dst_ref":"ts:sample.ts::Store.save","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":40,"line":37,"path":"sample.ts"}},"src":"ts:sample.ts::Store","type":"Relation"}
 {"dst_ref":"ts:sample.ts::openStore","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":51,"line":48,"path":"sample.ts"}},"src":"ts:sample.ts","type":"Relation"}
 {"dst_ref":"ts:sample.ts::reset","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":55,"line":53,"path":"sample.ts"}},"src":"ts:sample.ts","type":"Relation"}
 {"dst_ref":"ts:view.tsx::View","kind":"defines","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":9,"line":7,"path":"view.tsx"}},"src":"ts:view.tsx","type":"Relation"}
@@ -54,6 +60,9 @@
 {"id":"ts:sample.ts::Named","kind":"interface","name":"Named","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":7,"line":5,"path":"sample.ts"}},"type":"Entity"}
 {"id":"ts:sample.ts::Row","kind":"interface","name":"Row","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":16,"line":9,"path":"sample.ts"}},"type":"Entity"}
 {"id":"ts:sample.ts::Store","kind":"class","name":"Store","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":46,"line":28,"path":"sample.ts"}},"type":"Entity"}
+{"id":"ts:sample.ts::Store.constructor","kind":"method","name":"constructor","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":35,"line":32,"path":"sample.ts"}},"type":"Entity"}
+{"id":"ts:sample.ts::Store.load","kind":"method","name":"load","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":45,"line":42,"path":"sample.ts"}},"type":"Entity"}
+{"id":"ts:sample.ts::Store.save","kind":"method","name":"save","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":40,"line":37,"path":"sample.ts"}},"type":"Entity"}
 {"id":"ts:sample.ts::openStore","kind":"function","name":"openStore","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":51,"line":48,"path":"sample.ts"}},"type":"Entity"}
 {"id":"ts:sample.ts::reset","kind":"function","name":"reset","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":55,"line":53,"path":"sample.ts"}},"type":"Entity"}
 {"id":"ts:view.tsx","kind":"module","name":"view","origin":{"extractor":"typescript.structure@1","provenance":"extracted","source":{"end_line":10,"line":1,"path":"view.tsx"}},"type":"Entity"}

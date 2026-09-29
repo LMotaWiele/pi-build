@@ -1,4 +1,4 @@
-/* map page: treemap, call graph, data model. Plain script, no build step; d3 and dagre are inlined globals. */
+/* map page: treemap, call graph, data and code. Plain script, no build step; d3 and dagre are inlined globals. */
 (function () {
   "use strict";
 
@@ -86,7 +86,7 @@
   document.getElementById("diag-close").addEventListener("click", function () { document.getElementById("diag-dialog").close(); });
 
   // ------------------------------------------------------------------- tabs
-  var TABS = ["treemap", "callgraph", "erd"];
+  var TABS = ["treemap", "callgraph", "data", "code"];
   var rendered = {};
   var current = "treemap";
   function selectTab(name) {
@@ -101,7 +101,7 @@
     hideTip();
     if (name === "treemap") Treemap.render();
     else if (name === "callgraph") CallGraph.render();
-    else ErdView.render();
+    else ErdView.render(name);
     rendered[name] = true;
   }
   TABS.forEach(function (t) {
@@ -112,7 +112,7 @@
     if (e.key === "/" && !typing) { e.preventDefault(); filterBox.focus(); filterBox.select(); return; }
     if (e.key === "Escape" && e.target === filterBox) { filterBox.blur(); return; }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-    var i = ["1", "2", "3"].indexOf(e.key);
+    var i = ["1", "2", "3", "4"].indexOf(e.key);
     if (i >= 0) selectTab(TABS[i]);
   });
   var filterTimer = null;
@@ -445,69 +445,94 @@
     return { render: render, showTurn: showTurn };
   })();
 
-  // ------------------------------------------------------------ data model
+  // ------------------------------------------------------------- data / code
   var ErdView = (function () {
     var erd = DATA.erd || { entities: [], relations: [], accesses: [] };
-    var accessMode = false;
-    var CODE_KINDS = { class: 1, interface: 1, type: 1, dataclass: 1, pydantic: 1, typeddict: 1, enum: 1, function: 1 };
     var byId = {};
     erd.entities.forEach(function (e) { byId[e.id] = e; });
-    var modeEntities = document.getElementById("erd-mode-entities"), modeAccess = document.getElementById("erd-mode-access");
-    function setMode(access) {
-      accessMode = access;
-      modeEntities.setAttribute("aria-pressed", String(!access));
-      modeAccess.setAttribute("aria-pressed", String(access));
-      render();
+    ["code-tests", "code-modules", "data-tests"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", function () { render(id === "data-tests" ? "data" : "code"); });
+    });
+    function codeEntity(e) { return e.layer === "code" && e.kind !== "event"; }
+    function codeMember(e) { return e && (e.kind === "function" || e.kind === "method"); }
+    function allowed(e, view) { return e && (!e.test || document.getElementById(view + "-tests").checked); }
+    function moduleId(id) { return id.split("::")[0]; }
+    function subscriptionIds(id) {
+      // Subscriptions attach to the named actor, never to an event node in the data view.
+      return erd.accesses.filter(function (a) { return a.mode === "subscribe" && a.functions.some(function (f) { return f.actor === id; }); })
+        .map(function (a) { return a.target; });
     }
-    modeEntities.addEventListener("click", function () { setMode(false); });
-    modeAccess.addEventListener("click", function () { setMode(true); });
-    document.getElementById("erd-modules").addEventListener("change", function () { render(); });
-    document.getElementById("erd-code").addEventListener("change", function () { render(); });
-
-    function visibleEntities() {
-      var showModules = document.getElementById("erd-modules").checked;
-      var showCode = document.getElementById("erd-code").checked;
-      var q = filterText();
-      var keep = erd.entities.filter(function (e) {
-        if (e.kind === "module") return showModules;
-        if (CODE_KINDS[e.kind]) return showCode;
-        return true;
-      });
-      if (!q) return { list: keep, match: {} };
-      var match = {};
-      keep.forEach(function (e) { if ((e.id + " " + e.name).toLowerCase().indexOf(q) >= 0) match[e.id] = true; });
-      var near = {};
-      erd.relations.forEach(function (r) {
-        if (match[r.src]) near[r.dst] = true;
-        if (match[r.dst]) near[r.src] = true;
-      });
-      return { list: keep.filter(function (e) { return match[e.id] || near[e.id]; }), match: match };
+    function graph(view) {
+      var list = [], rels = [], match = {}, ids = {}, q = filterText();
+      var showModules = view === "code" && document.getElementById("code-modules").checked;
+      if (view === "data") {
+        list = erd.entities.filter(function (e) { return e.layer === "data" && e.kind !== "module" && allowed(e, view); });
+        list.forEach(function (e) { ids[e.id] = true; });
+        rels = erd.relations.filter(function (r) {
+          return ids[r.src] && ids[r.dst] && (r.kind === "has_field_of" || r.kind === "fk");
+        });
+        // Accesses are aggregated by file, but functions retain each named actor.
+        erd.accesses.forEach(function (a) {
+          if (!ids[a.target] || (a.mode !== "read" && a.mode !== "write")) return;
+          a.functions.forEach(function (f) {
+            var actor = byId[f.actor];
+            if (!codeMember(actor) || !allowed(actor, view)) return;
+            if (!ids[actor.id]) { list.push(Object.assign({}, actor, { actorNode: true })); ids[actor.id] = true; }
+            rels.push({ src: actor.id, dst: a.target, kind: a.mode, provenance: f.provenance || a.provenance });
+          });
+        });
+      } else {
+        var ownership = erd.relations.filter(function (r) { return r.kind === "member_of" && r.dst; });
+        var owners = {};
+        ownership.forEach(function (r) { if (codeMember(byId[r.src]) && allowed(byId[r.src], view)) owners[r.dst] = true; });
+        list = erd.entities.filter(function (e) {
+          return allowed(e, view) && (codeEntity(e) || owners[e.id] || showModules && e.kind === "module");
+        });
+        list.forEach(function (e) { ids[e.id] = true; });
+        rels = ownership.filter(function (r) { return ids[r.src] && ids[r.dst]; })
+          .map(function (r) { return { src: r.dst, dst: r.src, kind: "member_of", provenance: r.provenance }; });
+        // A module owns its top-level declarations. Qualified ids give the
+        // same containment when the extractor does not emit a defines edge.
+        if (showModules) {
+          list.forEach(function (e) {
+            var mod = moduleId(e.id);
+            if (e.id !== mod && ids[mod] && !ownership.some(function (r) { return r.src === e.id && ids[r.dst]; }))
+              rels.push({ src: mod, dst: e.id, kind: "defines", provenance: "extracted" });
+          });
+          erd.relations.forEach(function (r) {
+            if (r.kind === "imports" && ids[r.src] && ids[r.dst]) rels.push(r);
+          });
+        }
+      }
+      if (q) {
+        list.forEach(function (e) { if ((e.id + " " + e.name).toLowerCase().indexOf(q) >= 0) match[e.id] = true; });
+        var near = {};
+        rels.forEach(function (r) {
+          if (match[r.src]) near[r.dst] = true;
+          if (match[r.dst]) near[r.src] = true;
+        });
+        list = list.filter(function (e) { return match[e.id] || near[e.id]; });
+        ids = {};
+        list.forEach(function (e) { ids[e.id] = true; });
+        rels = rels.filter(function (r) { return ids[r.src] && ids[r.dst]; });
+      }
+      return { list: list, rels: rels, match: match };
     }
 
-    function render() {
-      var canvas = document.getElementById("erd-canvas");
+    function render(view) {
+      var canvas = document.getElementById(view + "-canvas");
       canvas.innerHTML = "";
-      canvas.classList.remove("scroll");
-      if (accessMode) return accesses(canvas);
-      var vis = visibleEntities();
-      var ids = {};
-      vis.list.forEach(function (e) { ids[e.id] = true; });
-      var showModules = document.getElementById("erd-modules").checked;
-      var rels = erd.relations.filter(function (r) {
-        if (!ids[r.src] || !ids[r.dst] || r.src === r.dst) return false;
-        return showModules || (r.kind !== "imports" && r.kind !== "defines");
-      });
-      document.getElementById("erd-count").textContent = vis.list.length + " entities · " + rels.length + " relations";
+      var vis = graph(view);
+      document.getElementById(view + "-count").textContent = vis.list.length + " nodes · " + vis.rels.length + " links";
       if (!vis.list.length) { canvas.innerHTML = "<p class='note'>No entities match.</p>"; return; }
-      if (vis.list.length > 700) { canvas.innerHTML = "<p class='note'>" + vis.list.length + " entities; filter to fewer than 700 to lay them out.</p>"; return; }
-      var MAXF = 10;
-      var comps = components(vis.list, rels);
+      if (vis.list.length > 700) { canvas.innerHTML = "<p class='note'>" + vis.list.length + " nodes; filter to fewer than 700 to lay them out.</p>"; return; }
+      var MAXF = view === "data" ? 10 : 0;
+      var comps = components(vis.list, vis.rels);
       var box = sizeOf(canvas);
-      var svg = d3.select(canvas).append("svg").attr("role", "img").attr("aria-label", "Entity relationship diagram");
+      var svg = d3.select(canvas).append("svg").attr("role", "img").attr("aria-label", view === "data" ? "Data model" : "Code ownership and imports");
       var root = svg.append("g");
       var line = d3.line().x(function (p) { return p.x; }).y(function (p) { return p.y; }).curve(d3.curveBasis);
-      var defs = svg.append("defs");
-      defs.append("marker").attr("id", "arrow").attr("viewBox", "0 0 10 10").attr("refX", 9).attr("refY", 5)
+      svg.append("defs").append("marker").attr("id", "arrow-" + view).attr("viewBox", "0 0 10 10").attr("refX", 9).attr("refY", 5)
         .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto-start-reverse")
         .append("path").attr("d", "M0,0L10,5L0,10z").attr("fill", cssVar("--edge"));
       var laid = comps.map(function (c) { return layoutComponent(c.nodes, c.rels, MAXF); });
@@ -516,7 +541,7 @@
       var x = 0, y = 0, rowH = 0;
       laid.forEach(function (l) {
         if (x > 0 && x + l.w > rowWidth) { x = 0; y += rowH + 30; rowH = 0; }
-        drawComponent(root, l, x, y, vis.match, line, MAXF);
+        drawComponent(root, l, x, y, vis.match, line, MAXF, view);
         x += l.w + 30;
         rowH = Math.max(rowH, l.h);
       });
@@ -542,12 +567,13 @@
       g.setGraph({ rankdir: "LR", nodesep: 18, ranksep: 60, marginx: 0, marginy: 0 });
       g.setDefaultEdgeLabel(function () { return {}; });
       nodes.forEach(function (e) {
-        var shown = e.fields.slice(0, MAXF);
+        var shown = (e.fields || []).slice(0, MAXF);
         var width = Math.max(textWidth(e.name, 12) + 20, textWidth(e.kind, 10) + 20, d3.max(shown, function (f) {
           return textWidth(f.name + (f.type_ref ? ": " + f.type_ref : ""), 11) + 16;
         }) || 0, 120);
         width = Math.min(width, 300);
-        var height = 34 + shown.length * 14 + (e.fields.length > MAXF ? 14 : 0) + 6;
+        var height = 34 + shown.length * 14 + (MAXF && (e.fields || []).length > MAXF ? 14 : 0) + 6;
+        if (e.actorNode) { width = Math.min(width, 190); height = 36; }
         g.setNode(e.id, { width: width, height: height, data: e });
       });
       rels.forEach(function (r, i) { g.setEdge(r.src, r.dst, { data: r, width: textWidth(r.kind, 10), height: 10, labelpos: "c" }, "r" + i); });
@@ -556,30 +582,31 @@
       return { g: g, w: gr.width || 120, h: gr.height || 40 };
     }
 
-    function drawComponent(root, l, ox, oy, match, line, MAXF) {
+    function drawComponent(root, l, ox, oy, match, line, MAXF, view) {
       var g = l.g;
       var layer = root.append("g").attr("transform", "translate(" + ox + "," + oy + ")");
       g.edges().forEach(function (e) {
         var ed = g.edge(e), r = ed.data;
-        layer.append("path").attr("class", "erd-rel " + r.provenance).attr("d", line(ed.points)).attr("marker-end", "url(#arrow)");
+        layer.append("path").attr("class", (r.kind === "read" || r.kind === "write" ? "acc " + r.kind : "erd-rel") + " " + r.provenance)
+          .attr("d", line(ed.points)).attr("marker-end", "url(#arrow-" + view + ")");
         layer.append("text").attr("class", "erd-rel-label").attr("x", ed.x).attr("y", ed.y + 3).attr("text-anchor", "middle").text(r.kind);
       });
       g.nodes().forEach(function (id) {
         var nd = g.node(id), e = nd.data;
-        var grp = layer.append("g").attr("class", "erd-box" + (match[id] ? " match" : ""))
+        var grp = layer.append("g").attr("class", "erd-box" + (e.actorNode ? " actor" : "") + (e.test ? " test" : "") + (match[id] ? " match" : ""))
           .attr("transform", "translate(" + (nd.x - nd.width / 2) + "," + (nd.y - nd.height / 2) + ")").style("cursor", "pointer");
         grp.append("rect").attr("class", "body").attr("width", nd.width).attr("height", nd.height).attr("rx", 6)
           .attr("stroke-dasharray", e.provenance === "inferred" ? "5 4" : null);
         grp.append("rect").attr("class", "head").attr("x", 1).attr("y", 1).attr("width", nd.width - 2).attr("height", 30).attr("rx", 5);
         grp.append("text").attr("x", 8).attr("y", 14).attr("font-weight", 600).text(clip(e.name, nd.width - 16, 11));
         grp.append("text").attr("class", "kind").attr("x", 8).attr("y", 26).text(e.kind + (e.path ? " · " + e.path.split("/").pop() : ""));
-        e.fields.slice(0, MAXF).forEach(function (f, i) {
+        (e.fields || []).slice(0, MAXF).forEach(function (f, i) {
           grp.append("text").attr("x", 8).attr("y", 46 + i * 14)
             .text(clip(f.name + (f.type_ref ? ": " + f.type_ref : ""), nd.width - 16, 11));
         });
-        if (e.fields.length > MAXF) grp.append("text").attr("class", "kind").attr("x", 8).attr("y", 46 + MAXF * 14).text("+" + (e.fields.length - MAXF) + " more");
-        grp.on("click", function () { entityPanel(e); })
-          .on("mousemove", function (ev) { showTip(ev, "<div class='t'>" + esc(e.id) + "</div><div class='s'>" + esc(e.kind) + " · " + e.fields.length + " fields · " + esc(e.provenance) + "</div>"); })
+        if (MAXF && (e.fields || []).length > MAXF) grp.append("text").attr("class", "kind").attr("x", 8).attr("y", 46 + MAXF * 14).text("+" + (e.fields.length - MAXF) + " more");
+        grp.on("click", function () { entityPanel(e, view); })
+          .on("mousemove", function (ev) { showTip(ev, "<div class='t'>" + esc(e.id) + "</div><div class='s'>" + esc(e.kind) + " · " + (e.fields || []).length + " fields · " + esc(e.provenance) + "</div>"); })
           .on("mouseleave", hideTip);
       });
     }
@@ -589,74 +616,16 @@
       return s.length > max ? s.slice(0, max - 1) + "…" : s;
     }
 
-    function accesses(canvas) {
-      var q = filterText();
-      var rows = erd.accesses.filter(function (a) {
-        return !q || (a.actor_file + " " + a.target).toLowerCase().indexOf(q) >= 0;
-      });
-      document.getElementById("erd-count").textContent = rows.length + " file → entity accesses";
-      if (!rows.length) { canvas.innerHTML = "<p class='note'>No resolved accesses.</p>"; return; }
-      var filesL = Array.from(new Set(rows.map(function (a) { return a.actor_file; }))).sort();
-      var targets = Array.from(new Set(rows.map(function (a) { return a.target; }))).sort();
-      var rowH = 22, top = 30;
-      var leftW = Math.min(360, (d3.max(filesL, function (f) { return textWidth(f, 11); }) || 100) + 20);
-      var rightW = Math.min(360, (d3.max(targets, function (t) { return textWidth(t, 11); }) || 100) + 20);
-      var box = sizeOf(canvas);
-      var gap = Math.max(260, box.w - leftW - rightW - 60);
-      var height = top + Math.max(filesL.length, targets.length) * rowH + 20;
-      var yL = {}, yR = {};
-      var offL = (Math.max(filesL.length, targets.length) - filesL.length) * rowH / 2;
-      var offR = (Math.max(filesL.length, targets.length) - targets.length) * rowH / 2;
-      filesL.forEach(function (f, i) { yL[f] = top + offL + i * rowH; });
-      targets.forEach(function (t, i) { yR[t] = top + offR + i * rowH; });
-      var svg = d3.select(canvas).append("svg").attr("role", "img").attr("aria-label", "Accesses from files to entities");
-      var root = svg.append("g").attr("transform", "translate(20,0)");
-      root.append("text").attr("class", "muted").attr("x", 0).attr("y", 16).text("files");
-      root.append("text").attr("class", "muted").attr("x", leftW + gap).attr("y", 16).text("entities");
-      var x1 = leftW, x2 = leftW + gap;
-      var defs = svg.append("defs");
-      defs.append("marker").attr("id", "acc-arrow").attr("viewBox", "0 0 10 10").attr("refX", 9).attr("refY", 5)
-        .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
-        .append("path").attr("d", "M0,0L10,5L0,10z").attr("fill", cssVar("--edge"));
-      rows.forEach(function (a) {
-        var ya = yL[a.actor_file] + rowH / 2 - 4, yb = yR[a.target] + rowH / 2 - 4;
-        var mid = (x1 + x2) / 2;
-        root.append("path").attr("class", "acc " + a.mode + (a.provenance === "inferred" ? " inferred" : ""))
-          .attr("d", "M" + x1 + "," + ya + " C" + mid + "," + ya + " " + mid + "," + yb + " " + (x2 - 4) + "," + yb)
-          .attr("marker-end", "url(#acc-arrow)")
-          .on("mousemove", function (e) { showTip(e, "<div class='t'>" + esc(a.actor_file) + " → " + esc(a.target) + "</div><div class='s'>" + esc(a.mode) + " × " + a.count + " · " + esc(a.provenance) + "</div>"); })
-          .on("mouseleave", hideTip);
-        var t = 0.3;
-        var lx = Math.pow(1 - t, 3) * x1 + 3 * Math.pow(1 - t, 2) * t * mid + 3 * (1 - t) * t * t * mid + Math.pow(t, 3) * (x2 - 4);
-        var ly = Math.pow(1 - t, 3) * ya + 3 * Math.pow(1 - t, 2) * t * ya + 3 * (1 - t) * t * t * yb + Math.pow(t, 3) * yb;
-        root.append("text").attr("class", "acc-label").attr("x", lx).attr("y", ly - 3).attr("text-anchor", "middle")
-          .text(a.mode + (a.count > 1 ? " ×" + a.count : ""));
-      });
-      filesL.forEach(function (f) {
-        var grp = root.append("g").attr("class", "acc-node").attr("transform", "translate(0," + yL[f] + ")");
-        grp.append("rect").attr("width", leftW).attr("height", rowH - 4).attr("rx", 4);
-        grp.append("text").attr("x", 6).attr("y", 13).text(clip(f, leftW - 12, 11)).append("title").text(f);
-      });
-      targets.forEach(function (t) {
-        var grp = root.append("g").attr("class", "acc-node").attr("transform", "translate(" + x2 + "," + yR[t] + ")").style("cursor", byId[t] ? "pointer" : null);
-        grp.append("rect").attr("width", rightW).attr("height", rowH - 4).attr("rx", 4);
-        grp.append("text").attr("x", 6).attr("y", 13).text(clip(t, rightW - 12, 11)).append("title").text(t);
-        if (byId[t]) grp.on("click", function () { entityPanel(byId[t]); });
-      });
-      svg.attr("viewBox", null).style("height", height + "px").style("width", (leftW + gap + rightW + 40) + "px");
-      canvas.classList.add("scroll");
-    }
-
-    function entityPanel(e) {
+    function entityPanel(e, view) {
       var rels = erd.relations.filter(function (r) { return r.src === e.id || r.dst === e.id; });
       var acc = [];
       erd.accesses.forEach(function (a) {
-        if (a.target === e.id) a.functions.forEach(function (f) { acc.push({ mode: a.mode, actor: f.actor, line: f.line, provenance: f.provenance }); });
+        if (a.target === e.id && (a.mode === "read" || a.mode === "write")) a.functions.forEach(function (f) { acc.push({ mode: a.mode, actor: f.actor, line: f.line, provenance: f.provenance }); });
       });
       var src = e.source ? e.source.path + ":" + e.source.line : (e.path || "");
       var html = "<h2 class='mono'>" + esc(e.name) + "</h2><p class='mono'>" + esc(e.id) + "</p><p>" + esc(e.kind) + " · " + esc(e.provenance) +
         (src ? " · <span class='mono'>" + esc(src) + "</span>" : "") + "</p>";
-      html += "<h3>Fields (" + e.fields.length + ")</h3>" + (e.fields.length ? "<table><tbody>" + e.fields.map(function (f) {
+      html += "<h3>Fields (" + (e.fields || []).length + ")</h3>" + ((e.fields || []).length ? "<table><tbody>" + e.fields.map(function (f) {
         return "<tr><td class='mono'>" + esc(f.name) + "</td><td class='mono'>" + esc(f.type_ref || "") + (f.type_id ? " → " + esc(f.type_id) : "") + "</td></tr>";
       }).join("") + "</tbody></table>" : "<p class='empty'>None.</p>");
       html += "<h3>Relations (" + rels.length + ")</h3>" + (rels.length ? "<table><tbody>" + rels.map(function (r) {
@@ -666,7 +635,25 @@
       html += "<h3>Read or written by (" + acc.length + ")</h3>" + (acc.length ? "<table><tbody>" + acc.map(function (a) {
         return "<tr><td>" + esc(a.mode) + "</td><td class='mono'>" + esc(a.actor) + (a.line ? ":" + a.line : "") + "</td></tr>";
       }).join("") + "</tbody></table>" : "<p class='empty'>No resolved accesses.</p>");
-      document.getElementById("erd-panel").innerHTML = html;
+      if (view === "code") {
+        var members = erd.relations.filter(function (r) { return r.kind === "member_of" && r.dst === e.id && allowed(byId[r.src], view); })
+          .map(function (r) { return byId[r.src]; });
+        if (e.kind === "module") members = members.concat(erd.entities.filter(function (item) {
+          return item.id !== e.id && moduleId(item.id) === e.id && item.id.indexOf("::") >= 0 &&
+            item.id.split("::")[1].indexOf(".") < 0 && allowed(item, view) && members.indexOf(item) < 0;
+        }));
+        html += "<h3>Members (" + members.length + ")</h3>" + (members.length ? "<ul>" + members.map(function (m) {
+          return "<li class='mono'>" + esc(m.name) + " <span class='empty'>" + esc(m.kind) + "</span></li>";
+        }).join("") + "</ul>" : "<p class='empty'>None.</p>");
+        var subscribers = [e].concat(members).filter(codeMember);
+        var subs = subscribers.map(function (m) { return { actor: m.name, events: subscriptionIds(m.id) }; })
+          .filter(function (row) { return row.events.length; });
+        html += "<h3>Event subscriptions (" + subs.reduce(function (n, row) { return n + row.events.length; }, 0) + ")</h3>" +
+          (subs.length ? "<ul>" + subs.map(function (row) { return row.events.map(function (id) {
+            return "<li class='mono'>" + esc(row.actor) + " → " + esc((byId[id] || {}).name || id) + "</li>";
+          }).join(""); }).join("") + "</ul>" : "<p class='empty'>None.</p>");
+      }
+      document.getElementById(view + "-panel").innerHTML = html;
     }
     return { render: render };
   })();

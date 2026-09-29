@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import PurePosixPath
 
 from ..ir import path_of
 from ..resolve import Resolved
@@ -26,10 +27,11 @@ def build_erd(header: dict, resolved: Resolved) -> tuple[dict, dict]:
 
     entities = []
     omitted = 0
+    data_kinds = {"table", "file_store", "config", "dataclass", "pydantic", "typeddict", "enum", "global"}
     for entity in resolved.entities:
         eid = entity["id"]
         own_fields = fields_by.get(eid, [])
-        if not own_fields and eid not in related and eid not in targeted:
+        if not own_fields and eid not in related and eid not in targeted and entity["kind"] not in (*data_kinds, "class", "interface", "type"):
             omitted += 1
             continue
         fields = []
@@ -46,11 +48,22 @@ def build_erd(header: dict, resolved: Resolved) -> tuple[dict, dict]:
             type_id = fld.get("type_id") or (typed_by_line.get((eid, source["line"])) if source else None)
             fields.append({"name": fld["name"], "type_ref": fld["type_ref"], "type_id": type_id,
                            "provenance": fld["origin"]["provenance"]})
+        path = path_of(eid)
+        file_name = PurePosixPath(path).name if path else ""
+        is_test = bool(path and (
+            "tests" in PurePosixPath(path).parts[:-1]
+            or file_name in ("conftest.py",)
+            or file_name.startswith("test_") and file_name.endswith(".py")
+            or file_name.endswith(("_test.py", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"))
+        ))
+        is_data = entity["kind"] in data_kinds or (entity["kind"] in ("class", "interface", "type") and bool(own_fields))
         entities.append({
             "id": eid,
             "kind": entity["kind"],
             "name": entity["name"],
-            "path": path_of(eid),
+            "path": path,
+            "layer": "data" if is_data else "code",
+            "test": is_test,
             "fields": fields,
             "source": entity["origin"].get("source"),
             "provenance": entity["origin"]["provenance"],

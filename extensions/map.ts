@@ -7,6 +7,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { homedir } from "node:os";
+import { pipelineRunRoot, pipelineTelemetryDbs } from "../lib/pipeline.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findProjectRoot } from "../lib/scaffold.ts";
@@ -53,7 +55,7 @@ export function mapSettings(block: Record<string, unknown>, toolDir = defaultToo
 
 export function mapCommand(
   settings: MapSettings,
-  input: { root: string; telemetry: string; turn?: string },
+  input: { root: string; telemetry: string; turn?: string; extraTelemetry?: string[] },
 ): { bin: string; args: string[] } {
   const args = [
     "run", "--project", settings.toolDir, "python", "-m", "map_build",
@@ -62,8 +64,13 @@ export function mapCommand(
     "--telemetry", input.telemetry,
     "--window-days", String(settings.windowDays),
   ];
+  for (const db of input.extraTelemetry ?? []) args.push("--telemetry", db);
   if (input.turn) args.push("--turn", input.turn);
   return { bin: settings.uv, args };
+}
+
+export function shouldRunMap(env: Record<string, string | undefined>): boolean {
+  return env.PI_BUILD_PIPELINE !== "1";
 }
 
 /** A path from a tool call is the project's when it resolves inside the root. */
@@ -162,7 +169,7 @@ function openCommand(file: string): { bin: string; args: string[] } {
 
 export default function mapExtension(pi: ExtensionAPI): void {
   try {
-    if (explainOneShot()) return;
+    if (explainOneShot() || !shouldRunMap(process.env)) return;
     const settings = readPiSettings();
     if (!extensionEnabled(settings, "map")) return;
     attachTelemetry(pi as unknown as Parameters<typeof attachTelemetry>[0], "map");
@@ -186,7 +193,9 @@ export default function mapExtension(pi: ExtensionAPI): void {
     const build = (cwd: string): Promise<void> | null => {
       if (!ready()) return null;
       const root = findProjectRoot(cwd);
-      const command = mapCommand(config, { root, telemetry: telemetryPath(), turn: turnSnapshot().turnId || undefined });
+      const command = mapCommand(config, { root, telemetry: telemetryPath(),
+        extraTelemetry: pipelineTelemetryDbs(pipelineRunRoot(settings, homedir())),
+        turn: turnSnapshot().turnId || undefined });
       return builds.request(command, root);
     };
 

@@ -17,3 +17,4 @@ Implemented by is filled when a spec is implemented, from its run record.
 | 0011 | SPEC-0011: Make explain a learning aid again, for every project, and clear the documentation clutter | ready | — | 2026-09-29 | — |
 | 0012 | Build spec — Pi harness v0.1 | implemented | Grok Build | 2026-09-22 | `docs/design/build-spec-pi-v0.1.md` |
 | 0013 | Fix spec — Pi v0.1 closeout: memory enforcement, Grok interop | implemented | Grok Build | 2026-09-22 | `docs/design/fix-spec-pi-v0.1-interop.md` |
+| 0014 | SPEC-0014: Complete the codebase map — attribution, pipeline visibility, owners and data model views | ready | — | 2026-09-30 | — |

@@ -1,4 +1,4 @@
-# SPEC-NNNN: Complete the codebase map — attribution, pipeline visibility, owners and data model views
+# SPEC-0014: Complete the codebase map — attribution, pipeline visibility, owners and data model views
 
 | Field | Value |
 |---|---|
@@ -8,9 +8,9 @@
 | Parent | SPEC-0007 |
 | Date | 2026-09-30 |
 | Checkpoint | continuous |
-| Run record | /docs/specs/SPEC-NNNN-run.md |
+| Run record | /docs/specs/SPEC-0014-run.md |
 
-Replace `NNNN` in this file's name, its `.tests/` directory and the run record with the next free spec ID — `0014` as of `34c3bd4`. Confirm it is free.
+Spec ID `0014` confirmed free at start revision `d816bd98a6aa8d77ba066c420078850a21087757`.
 
 Executor: `bin/pi-implement` — the delegated route: Sol plans at high, Luna implements each task at medium, Sol integrates at high.
 

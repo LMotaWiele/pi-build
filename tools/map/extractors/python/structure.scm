@@ -2,11 +2,7 @@
 
 (class_definition name: (identifier) @entity.name) @entity.class
 
-(module (function_definition name: (identifier) @entity.name) @entity.function)
-
-(module
-  (decorated_definition
-    definition: (function_definition name: (identifier) @entity.name) @entity.function))
+(function_definition name: (identifier) @entity.name) @entity.function
 
 (class_definition
   superclasses: (argument_list [(identifier) (attribute)] @relation.inherits))
