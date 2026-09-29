@@ -17,9 +17,9 @@ Severity = Literal["warning", "error"]
 
 ENTITY_KINDS = (
     "module", "class", "interface", "type", "dataclass", "pydantic", "typeddict", "enum",
-    "function", "table", "file_store", "config", "event", "global",
+    "function", "method", "table", "file_store", "config", "event", "global",
 )
-RELATION_KINDS = ("has_field_of", "inherits", "implements", "fk", "imports", "defines", "same_key")
+RELATION_KINDS = ("has_field_of", "inherits", "implements", "fk", "imports", "defines", "same_key", "member_of")
 
 
 @dataclass(frozen=True)
