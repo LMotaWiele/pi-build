@@ -16,7 +16,7 @@
   name: (identifier) @entity.name
   value: [(arrow_function) (function_expression)]) @entity.function
 
-(method_definition name: (_) @entity.name) @entity.method
+(class_body (method_definition name: (_) @entity.name) @entity.method)
 
 ; Members.
 (interface_declaration
