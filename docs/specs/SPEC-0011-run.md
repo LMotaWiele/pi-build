@@ -12,6 +12,14 @@ V1 `node --experimental-strip-types --test docs/specs/SPEC-0011-make-explain-a-l
 
 V3/V4 fresh session: `pi --model openai-codex/gpt-6-luna --thinking low --approve -p 'Use the edit tool to change only basic.js: change the + 1 to + 2...'` in `/tmp/spec11-live-Xzi0nS` exited 0. The edit succeeded; no `.agent/explain/` file was written; shutdown wrote `.agent/recaps/2026-09-29-session-1.md`. The prompt used only basic JavaScript arithmetic. This is a fresh pi print-mode session on the new extensions, not an interactive TUI. Stage 1 exit: passed, with one V2 repair round. V10's template half passed; its validator half is deferred to Stage 2 by revision 2.
 
-## Stage 2
+## Stage 2: reports, known list, and stale copies
 
-Pending.
+V7 `node --experimental-strip-types --test docs/specs/SPEC-0011-make-explain-a-learning-aid-again.tests/{layout,project-rules}.test.ts`: 12 passed. V8 `./doctor.sh --offline` and `./doctor.sh --project .`: both exited 0 after cleanup and after activating the validator. V9 all 19 `docs/specs/*.tests/*.test.ts` files: 132 tests passed. Stage 2 exit: passed; repair rounds: 0.
+
+The 24 report/recap/stray-file dispositions are recorded in `/tmp/spec11-moved.log`; report payloads were appended byte for byte beneath `## Moved from ...` in `SPEC-0001`, `0002`, `0003`, `0004`, `0006`, `0008`, `0009` and `0010` run records. Six session recaps moved to `.agent/recaps/`; `2026-09-29-turn.md` became `2026-09-29-turn-1790688226000.md` from the adding commit timestamp; `quota-footer.md` was deleted. The remaining date-turn-id files are walkthroughs. The original known list was `.agent/explain/known.md` at `94a893c` plus its pre-existing uncommitted additions. The filtered reader-wide list is now `~/.pi/agent/known.md`: 28 entries, preserving pi/tui APIs, TypeScript, non-basic Node APIs and git CLI while removing basics and repository-owned symbols. The old per-project list was removed. The original and final lists are available through `git show 94a893c:.agent/explain/known.md` and `~/.pi/agent/known.md` respectively; the start-revision uncommitted additions are shown in this run's initial `git diff`.
+
+Both v0.1 specs moved unchanged to `SPEC-0012` and `SPEC-0013`, with index rows. `SPEC-0005` is superseded in the index and gained its Landing paragraph. Deleted `docs/reference/` and the five landed `.reference/` trees, including this spec's reference. None was imported by production code; protected spec suites passed after removal.
+
+## Integrated acceptance
+
+Pending final commit and combined V1/V2/V7/V8/V9/V10 check.

@@ -35,3 +35,41 @@ At implementation commit `918b06f`, `node --experimental-strip-types --test docs
 ## Deviations and handoff
 
 The no-commit rule was real: note_update's promptGuidelines in extensions/memory-gate.ts ended with 'Do not commit.', which pi renders into the developer message's <rules>. Lucas removed it before this continuation; the fresh session could not see it and wrongly recorded it as a misattribution. Stage commits were collapsed into the first implementation commit because Stage 1 preceded this continuation. The V14 smoke did not merge into `main`; it used scratch branches and retained only artifacts in the run directory.
+
+## Moved from `.agent/explain/2026-09-29-spec-0010-closeout-metadata.md`
+
+# SPEC-0010 closeout metadata
+
+Commit `43d9231` numbers the title, marks the spec landed in the header and index, corrects the run-record account of the former commit gate, updates the agent commit policy, and adds an offline doctor check for placeholder spec titles and index/header status drift. The new guard has fixture tests; `./doctor.sh --offline` passed.
+
+The request refers to "landing text below" for §11, but no landing text was included in the message. §11 remains unchanged pending the exact text.
+
+## Moved from `.agent/explain/2026-09-29-spec-0010-completion.md`
+
+# SPEC-0010 completion
+
+Implemented runtime gates, shared pipeline decisions, the `bin/pi-implement` workflow and spec provenance. The smoke run first exposed generated `.agent/` walkthroughs entering commits and blocking a fast-forward; repair `1f99bd8` excludes generated memory from runner commits and clears only pipeline-branch generated memory at handoff. The retry passed: two Luna tasks, Sol integration, Node and Python spec tests, and report/run record handoff. Scratch branches and worktrees were removed; run artifacts remain under `~/var/pipeline-runs/SPEC-9001-add-smoke-double/2026-09-29T19-01-01-924Z/`.
+
+Final commit `85ffc74`: integrated 85/85; both doctor commands exit 0. Unrelated pre-existing `.agent/explain/` and `extensions/memory-gate.ts` changes remain uncommitted. Detailed stage evidence is `docs/specs/SPEC-0010-run.md`.
+
+## Moved from `.agent/explain/2026-09-29-spec-0010-landing-review.md`
+
+# SPEC-0010 landing review
+
+Inserted Lucas's supplied landing text verbatim into §11 of `docs/specs/SPEC-0010-make-pi-ready-for-spec-development.md`. `./doctor.sh --offline` passed. Committed as `94a893c` (`Land SPEC-0010 review findings`). Existing generated `.agent/explain/` changes were not included.
+
+## Moved from `.agent/explain/2026-09-29-stage1-budget-increase.md`
+
+# Stage 1 budget increase
+
+Raised per-turn budget backstops to 50,000,000 prompt tokens and $30 in `lib/telemetry.ts` and both host settings files. Updated local bounds tests to exercise the new limit, while retaining historical measured values in the spec's grounding table.
+
+Validation: Node suite plus Stage 1 pure-library tests: 125 pass, 1 skip, 0 fail. A running session keeps its loaded extensions/settings; the new settings apply on a fresh session.
+
+## Moved from `.agent/explain/2026-09-29-stage1-read-guard-gate-test.md`
+
+# Stage 1 read-guard test adjustment
+
+`tests/read-guard.test.ts` now asserts that long, read-heavy, failure-heavy turns are not bounded; prompt-token and cost budgets remain the only `boundReason` backstops. This replaces the historical assertion that the four removed proxy bounds fire.
+
+Validation: `node --experimental-strip-types --test tests/*.test.ts` — 101 passed, 1 skipped, 0 failed. Stage 1's fresh-session/doctor exit is still unverified; the offline doctor baseline fails on pre-existing memory-structure/harness-name findings in `.agent/notes/INDEX.md` and `.agent/explain/`.

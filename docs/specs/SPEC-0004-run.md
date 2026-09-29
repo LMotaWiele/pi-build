@@ -1,3 +1,9 @@
+# SPEC-0004 run record
+
+Reports moved here from `.agent/explain/` on 2026-09-29, verbatim.
+
+## Moved from `.agent/explain/2026-09-24-outcome-matrix.md`
+
 # Routing outcome matrix — 2026-09-24
 
 Section 2, Luna only. Model pin `openai-codex/gpt-5.6-luna`. No router. Seventeen tasks. Provider cost is the sum of `inference_calls.cost_usd` (already dollars). Parent cost is the same sum on the parent session. Rounds are parent inferences. Wall clock is the process elapsed, in seconds, and does not include grading. Reads are distinct read-tool paths before the first edit or write.

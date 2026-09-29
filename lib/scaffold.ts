@@ -286,6 +286,13 @@ export function validateProject(root: string, templatesDir = templatesDirFromSet
   else pass("skill matches README");
 
   const agentDir = path.join(project, ".agent");
+  const explainDir = path.join(agentDir, "explain");
+  for (const file of walkFiles(explainDir)) {
+    const name = path.relative(explainDir, file);
+    if (name !== "known.md" && !/^\d{4}-\d{2}-\d{2}-turn-[A-Za-z0-9-]+\.md$/.test(name)) {
+      fail(`not a walkthrough: .agent/explain/${name}`);
+    }
+  }
   // The harness's own notes may name its paths; other projects must stay neutral.
   const harnessRoot = path.resolve(path.dirname(fs.realpathSync(fileURLToPath(import.meta.url))), "..");
   if (fs.realpathSync(project) !== harnessRoot) {

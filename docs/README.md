@@ -4,23 +4,21 @@ Documents for this project live in this repository.
 
 | What | Where |
 |---|---|
-| Specs | `docs/design/`, the harness spec at `docs/SPEC-harness-setup.md`, the routing spec at `docs/SPEC-routing-orchestration.md`, and the translation spec at `docs/SPEC-spec-translation.md` |
+| Specs | `docs/specs/` and its index. Earlier specs remain as historical records. |
 | Routing and orchestration | `docs/SPEC-routing-orchestration.md`. Closed 2026-09-26 by `docs/SPEC-spec-translation.md`. The suite stays closed. |
 | Spec translation | `docs/SPEC-spec-translation.md`. Open. Step 0 is installed. A plan for `docs/SPEC-production-config.md` §2 and §5.2 was started and left unfinished. Steps 2 and 3 have not started. |
 | Session map | `tools/map/SPEC.md`. Two views: the call graph and the source tree. Fixtures are `tools/map/fixtures/telemetry.db` and `tools/map/fixtures/keeper/`. |
 | Harness setup spec | `docs/SPEC-harness-setup.md`. Closed 2026-09-24. Stage 4b stands for the §6 benchmark. Supersedes the context spec. |
 | Measurement spec | `docs/design/SPEC-delegation-ab.md`. §1–§3 are committed. §4–§6 are withdrawn. |
 | Context spec | `docs/design/SPEC-context-500k.md`. Superseded by the harness setup spec. Kept for history. Not executed. |
-| Trial writeup | `.agent/explain/` |
+| Trial writeup | The corresponding `docs/specs/SPEC-<id>-run.md` |
 | Notes and the queue | `.agent/notes/INDEX.md` |
 
 Pi loads this repository. `~/.pi/agent/settings.json`, `AGENTS.md`, `extensions`, and `skills` are symlinks into it. The host file pi reads is `settings/hosts/machina.json`.
 
-`docs/reference/` is a snapshot copied from the old `Documents/pi_build` tree. It is not what the live process loads. `docs/reference/machina.json` is not `settings/hosts/machina.json`.
-
 `implement` is `.pi/agents/implement.md` in this repo. `explore` is `~/.pi/agent/agents/explore.md`, outside this repo.
 
-Trial databases and runner logs under `/tmp` are local measurement output. They are not the documents. The writeup that interprets them is `.agent/explain/`.
+Trial databases and runner logs under `/tmp` are local measurement output. They are not the documents. Reports interpreting them live in each spec's run record under `docs/specs/`.
 
 | Run | Database |
 |---|---|

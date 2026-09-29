@@ -68,3 +68,61 @@ Immediately before one ordinary GPT-6 Sol task: 5h 67%, weekly 23%. Immediately 
 
 - The step-2 plan commit contained `docs/SPEC-production-config.reference/`, although the spec expected it absent. This did not change the source-selection decision because the implementations were near-identical to the references.
 - The runner's testable pipeline-thinking policy is exported from existing `lib/plan.ts`; `scripts/run-plan.mjs` consumes it. No new runtime component was added.
+
+## Moved from `.agent/explain/2026-09-29-2026-09-29-gpt6-migration-stop.md`
+
+# GPT-6 migration stopped at Stage 1 grounding
+
+The migration was not applied because pi 0.87.1 contradicts a premise that the spec explicitly marks as a stop condition.
+
+## Evidence
+
+In pi 0.87.1, `dist/core/model-resolver.js` documents the generic resolution order, but the CLI's `buildSessionOptions` constructs the scoped model before `findInitialModel` runs. When `enabledModels` is non-empty, it resolves `defaultModel`; if that model is among the enabled models it selects the default, otherwise it selects the first enabled model:
+
+```js
+savedInScope
+  ? (options.model = savedInScope.model, ...)
+  : (options.model = scopedModels[0].model, ...)
+```
+
+Therefore 0.87.1 does **not** unconditionally prefer `enabledModels[0]` ahead of `defaultModel`. The proposed doctor invariant and README statement would encode behavior that is not true. `SPEC-NNNN-migrate-to-gpt6.md` §9 says to stop if 0.87.1 no longer prefers `enabledModels[0]`.
+
+## Cleanup
+
+- Reverted all attempted GPT-6 source/config/test edits.
+- Restored the migration spec and protected directories to their original `SPEC-NNNN` names.
+- Reinstalled pi 0.87.0; `pi --version` reports `0.87.0`.
+- Removed temporary implementation files and generated smoke-session explanations.
+- Restored the notes index after the live installer smoke appended a queue row.
+- Preserved the previously completed `SPEC-0008` move work and its pre-existing host-setting edits.
+
+## Verification
+
+`./doctor.sh --offline` passes after rollback: 92 node tests passed, 1 skipped, and 80 map tests passed. The known optional `typebox` load warnings remain non-fatal.
+
+The migration spec needs revision before implementation: either make `defaultModel` the authoritative startup rule (while keeping it equal to `enabledModels[0]` as a configuration convention), or supply evidence for a different pi 0.87.1 path that truly makes list order authoritative.
+
+## Moved from `.agent/explain/2026-09-29-gpt6-migration.md`
+
+# GPT-6 migration
+
+Implemented `SPEC-0009` in three bounded stages.
+
+- Upgraded the harness pin to pi 0.87.1 and kept the existing router patch unchanged.
+- Made bare `gpt-6-sol` the host default, first in scope, with Sol/Luna at medium and Astra at high.
+- Moved routing, agent pins, pipeline thinking, validation, documentation and model metadata to GPT-6.
+- Added the bounded retry ladder in `lib/tiers.ts`: Luna → Sol medium, Sol below high → Sol high, and GPT-5.6 Terra resume → Sol high, with GPT-5.6 Sol only as the documented fallback.
+- Integrated that ladder into `extensions/bounds.ts`, retaining quota, environment-switch and one-retry guards.
+- Restored and adapted `pi-rework` for numbered specs. It accepts an ID, slug or full spec path and reports candidates on refusal.
+- Deleted the superseded GPT-5.6 tiers test and marked SPEC-0005's retry ladder as superseded.
+
+Validation:
+
+- Integrated migration and runner suites: 37/37 passed.
+- Final focused ladder/bounds/rework suites: 15/15 passed.
+- `./doctor.sh --offline`: 96 passed, 1 skipped; map suite 80 passed.
+- `./doctor.sh --project .`: passed.
+- Fresh RPC state: GPT-6 Sol, medium thinking.
+- Quota observation around one ordinary GPT-6 Sol task: 5h 67% and weekly 23% before and after.
+
+The complete staged evidence and the one source-layout deviation are recorded in `docs/specs/SPEC-0009-run.md`.

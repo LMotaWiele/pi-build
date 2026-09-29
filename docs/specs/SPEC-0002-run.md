@@ -1,3 +1,9 @@
+# SPEC-0002 run record
+
+Reports moved here from `.agent/explain/` on 2026-09-29, verbatim.
+
+## Moved from `.agent/explain/2026-09-22-context-baseline.md`
+
 # Context baseline — 2026-09-22
 
 Stage 1 of the context spec. The context usage panel (`npm:pi-context-usage` 1.0.2) is installed and kept. It draws a picture of the current context and changes no behaviour. Later stages were not started.

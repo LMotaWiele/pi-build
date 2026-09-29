@@ -204,3 +204,7 @@ After a week, write `.agent/explain/<date>-production-week.md`:
 4. `jev_shadow` has one set of answers per prompt, and no routing decision reads it.
 5. `rework.test.ts` passes, and `bin/pi-rework` records a row that §5.3's report joins to its task.
 6. `tests/routing-suite/tasks.jsonl` marks `59c9121` unfair, with the reason.
+
+## Landing
+
+§2 and §5.2 landed through SPEC-0009. The remaining sections were replaced by SPEC-0006, SPEC-0010 and Lucas's decision to use both harnesses in production.

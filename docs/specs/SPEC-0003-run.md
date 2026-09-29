@@ -1,3 +1,9 @@
+# SPEC-0003 run record
+
+Reports moved here from `.agent/explain/` on 2026-09-29, verbatim.
+
+## Moved from `.agent/explain/2026-09-23-harness-setup.md`
+
 # Harness setup — 2026-09-23
 
 Stage 1 made no model call. Stage 2 is the first measured turn, so its previous stage is stage 0. Prompt tokens are uncached input plus cache reads, the same sum stage 0 reports. Stored cost is the provider cost. The database path is in `docs/README.md`.

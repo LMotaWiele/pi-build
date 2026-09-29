@@ -1,3 +1,9 @@
+# SPEC-0008 run record
+
+Reports moved here from `.agent/explain/` on 2026-09-29, verbatim.
+
+## Moved from `.agent/explain/2026-09-29-2026-09-29-move-specs-into-docs-specs.md`
+
 # Move specs into `docs/specs`
 
 - Started from `86d7019b216c973fcfd87439776e41b20c74888f` with pre-existing changes to `settings/hosts/machina.json` and two untracked session explanations. They were left untouched.
