@@ -61,7 +61,7 @@ Start revision: `d644810bc65a0140b4fd79255b3a873c1099d58f` (integration worktree
 
 ## Diff stat and protected exception
 
-Final `git diff --stat` includes modified documentation, tiers, runner, entrypoint, doctor and the SPEC-0009 deletion, plus new `lib/progress.ts`, `extensions/pipeline.ts`, and `tests/pipeline-tool.test.ts` (untracked files do not appear in unstaged stat; staged final stat below after commit). Full protected exception diff:
+Final staged `git diff --cached --stat` before commit: **19 files changed, 867 insertions(+), 154 deletions(-)**; modified documentation, tiers, runner, entrypoint and doctor; new `lib/progress.ts`, `extensions/pipeline.ts`, `tests/pipeline-tool.test.ts`; and the SPEC-0009 deletion. Full protected exception diff:
 
 ```diff
 diff --git a/docs/specs/SPEC-0009-migrate-to-gpt6.tests/host-config.test.ts b/docs/specs/SPEC-0009-migrate-to-gpt6.tests/host-config.test.ts
