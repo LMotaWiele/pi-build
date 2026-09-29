@@ -22,4 +22,4 @@ Both v0.1 specs moved unchanged to `SPEC-0012` and `SPEC-0013`, with index rows.
 
 ## Integrated acceptance
 
-The combined V1/V2/V7/V8/V9/V10 check after reload and repair round 2 passed: `node --experimental-strip-types --test tests/*.test.ts $(find docs/specs -path '*.tests/*.test.ts' -type f | sort)` reported 237 pass, 1 local measurement skip, 0 fail. Both doctor commands exited 0. No protected suite was modified. A final check follows the run-record commit.
+The combined V1/V2/V7/V8/V9/V10 check after reload and repair round 2 passed: `node --experimental-strip-types --test tests/*.test.ts $(find docs/specs -path '*.tests/*.test.ts' -type f | sort)` reported 237 pass, 1 local measurement skip, 0 fail. Both doctor commands exited 0. No protected suite was modified. At committed tree `7869bb8`, the same combined command passed 237 tests with 1 local measurement skip; `./doctor.sh --offline` and `./doctor.sh --project .` both exited 0. The run-record-only closeout commit was followed by the same checks at its tip.
