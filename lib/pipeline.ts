@@ -4,6 +4,31 @@ import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { countVerifyChecks } from "./plan.ts";
 
+const TEST_ENV_KEYS = ["PI_BUILD_PIPELINE", "PI_BUILD_SUBAGENT_ROLE", "PI_BUILD_TELEMETRY_DB"] as const;
+
+export function testEnv(base: Record<string, string | undefined>): Record<string, string | undefined> {
+  const env = { ...base };
+  for (const key of TEST_ENV_KEYS) delete env[key];
+  return env;
+}
+
+export function costByRole(rows: { role: string | null; cost: number | null }[]): {
+  planner: number;
+  editor: number;
+  integration: number;
+  other: number;
+  total: number;
+} {
+  const totals = { planner: 0, editor: 0, integration: 0, other: 0, total: 0 };
+  for (const row of rows) {
+    const cost = typeof row.cost === "number" && Number.isFinite(row.cost) ? row.cost : 0;
+    const role = row.role === "planner" || row.role === "editor" || row.role === "integration" ? row.role : "other";
+    totals[role] += cost;
+    totals.total += cost;
+  }
+  return totals;
+}
+
 export function childEnv(
   base: Record<string, string | undefined>,
   role: "planner" | "editor" | "integration",
