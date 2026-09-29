@@ -16,7 +16,9 @@ V7 `verify-count.test.ts`, V8 `specs.test.ts` and `tests/pi-rework.test.ts`, V9 
 
 ## Stage 3 — entry point and runner
 
-V11 `bin/pi-implement 9 --dry-run`: exit 0; printed paths, 13 checks, Sol/high, Luna/medium and the Node test command, with no model call. V12 `bin/pi-implement 7 --dry-run`: exit 2, named missing verification and tests. V13 with `PI_BUILD_QUOTA_HOLD` pointing to a temporary weekly hold: exit 75. V14 repair round 1: baseline `715cd8c`, scratch fixture commit `ce735d0`. The pipeline gate passed, Luna T1/T2 and integration ran, and final Node and Python spec tests plus plan tests passed (`grade.json`). Handoff failed: pi generated `.agent/explain/` changes in both worktrees; runner's `git add -A` committed generated files, and fast-forward refused to overwrite branch-local generated files. Repair: exclude `.agent/` from runner commits, and restore/clean only `.agent/` in the pipeline's branch worktree immediately before fast-forward. New testable diagnosis, retry pending.
+V11 `bin/pi-implement 9 --dry-run`: exit 0; printed paths, 13 checks, Sol/high, Luna/medium and the Node test command, with no model call. V12 `bin/pi-implement 7 --dry-run`: exit 2, named missing verification and tests. V13 with `PI_BUILD_QUOTA_HOLD` pointing to a temporary weekly hold: exit 75. V14 repair round 1: baseline `715cd8c`, scratch fixture commit `ce735d0`. The pipeline gate passed, Luna T1/T2 and integration ran, and final Node and Python spec tests plus plan tests passed (`grade.json`). Handoff failed: pi generated `.agent/explain/` changes in both worktrees; runner's `git add -A` committed generated files, and fast-forward refused to overwrite branch-local generated files. Repair commit `1f99bd8`: exclude `.agent/` from runner commits, and restore/clean only `.agent/` in the pipeline's branch worktree immediately before fast-forward.
+
+V14 retry: scratch fixture commit `15fccbf` from `1f99bd8`; run directory `/home/george-contis/var/pipeline-runs/SPEC-9001-add-smoke-double/2026-09-29T19-01-01-924Z`. Sol plan gate passed with 2 checks and 2 Luna tasks. T1 passed (7 rounds, $0.00161536); T2 passed (6 rounds, $0.00192778). Integration ran (8 rounds, $0.1045704); planner ran 12 rounds ($0.1514808). Final `grade.json`: spec tests exit 0, both Node `double.test.ts` and `uv` `test_smoke_double.py` passed; plan tests exit 0. Protected diff empty. The handed-off branch `pipeline/SPEC-9001-add-smoke-double-2026-09-29T19-01-01-924Z` carried `docs/specs/SPEC-9001-run.md` headed `Implemented by: pi pipeline`, the plan, two implementation files, and `docs/specs/SPEC-9001-add-smoke-double.plan/report.md`; `report.md` also exists in the run directory. Quota snapshots: 5-hour 28% at T1 and 29% at T2/integration; weekly 31% throughout (planner snapshot not available). Recorded task cost $0.00354314; planner + integration + tasks total $0.25959434. `main` remained at `1f99bd8` during smoke. Both scratch worktrees and both scratch and pipeline branches were removed after verification; run artifacts retained. Stage 3 exit: passed, 1 repair round.
 
 ## Stage 4 — index and docs
 
@@ -24,8 +26,12 @@ V15 `index.test.ts`: passed. V16 `./doctor.sh --offline` and `./doctor.sh --proj
 
 ## Integrated acceptance
 
-`node --experimental-strip-types --test docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/*.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/{plan,quota}.test.ts tests/{bounds-split,pi-rework,read-guard,plan}.test.ts`: 85 passed, 0 failed. Both doctor checks exit 0. This is a working-tree validation; V14 evidence and final-commit acceptance are pending. O1/O2: Stage 1 gates and V1–V6; O3: V7–V10; O4: V11–V13 only, not demonstrated end-to-end; O5: V15–V16. §7 paths exercised by unit tests include stuck patterns, budgets, quota decisions, compaction decisions and dry-run preflight; live quota exhaustion and pipeline smoke were not exercised.
+`node --experimental-strip-types --test docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/*.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/{plan,quota}.test.ts tests/{bounds-split,pi-rework,read-guard,plan}.test.ts`: 85 passed, 0 failed. Both doctor checks exit 0. V14 evidence is above. Final-commit acceptance is recorded below after the final run. O1/O2: Stage 1 gates and V1–V6; O3: V7–V10; O4: V11–V14 including a live delegated run; O5: V15–V16. §7 paths exercised by unit tests include stuck patterns, budgets, quota decisions, compaction decisions and dry-run preflight; live quota exhaustion was not exercised; the pipeline smoke was exercised.
 
-## Deviations / stop
+## Final-commit acceptance
 
-An earlier session erroneously attributed a no-commit rule to the developer message; it was not present there. Commits and the V14 smoke are now permitted. Do not mark SPEC-0010 implemented until V14 and final-commit acceptance pass.
+Pending the run-record commit and integrated checks at that commit.
+
+## Deviations and handoff
+
+An earlier session erroneously attributed a no-commit rule to the developer message; it was not present there. Stage commits were collapsed into the first implementation commit because Stage 1 preceded this continuation. The V14 smoke did not merge into `main`; it used scratch branches and retained only artifacts in the run directory.
