@@ -18,4 +18,4 @@ Implemented by is filled when a spec is implemented, from its run record.
 | 0012 | Build spec — Pi harness v0.1 | implemented | Grok Build | 2026-09-22 | `docs/design/build-spec-pi-v0.1.md` |
 | 0013 | Fix spec — Pi v0.1 closeout: memory enforcement, Grok interop | implemented | Grok Build | 2026-09-22 | `docs/design/fix-spec-pi-v0.1-interop.md` |
 | 0014 | SPEC-0014: Complete the codebase map — attribution, pipeline visibility, owners and data model views | implemented | pi pipeline | 2026-09-30 | — |
-| 0015 | SPEC-0015: Move to GPT-6.1 Sol, fix the pipeline's loose ends, and run the pipeline from the chat | ready | — | 2026-09-30 | — |
+| 0015 | SPEC-0015: Move to GPT-6.1 Sol, fix the pipeline's loose ends, and run the pipeline from the chat | implemented | pi pipeline | 2026-09-30 | — |

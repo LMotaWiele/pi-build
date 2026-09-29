@@ -1,49 +1,3 @@
-# SPEC-0015 run
-
-Implemented by: pi pipeline
-
-Branch: pipeline/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat-2026-09-29T23-09-48-522Z
-Plan: docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.plan; gate: pass; checks: 11
-
-## Tasks
-- T02: pass; model gpt-6-luna; rounds 8; cost $0.0031649
-- T03: pass; model gpt-6-luna; rounds 6; cost $0.00313444
-- T05: pass; model gpt-6-luna; rounds 7; cost $0.0024896000000000002
-- T09: pass; model gpt-6-luna; rounds 6; cost $0.0020837
-- T10: pass; model gpt-6-luna; rounds 11; cost $0.004794420000000001
-- T12: pass; model gpt-6-luna; rounds 6; cost $0.00339784
-
-## Final grade
-
-```json
-{
-  "commit": "88fd558a4bbdea7aa26244fd3cc702072f364ab0",
-  "typecheck": {
-    "code": null,
-    "out": "no tsconfig.json"
-  },
-  "specTests": {
-    "code": 0,
-    "out": "✔ fresh sessions open on GPT-6.1 Sol: bare default id, in scope, and first (0.474137ms)\n✔ thinking levels and tiers name GPT-6.1 Sol (0.412191ms)\n✔ the pipeline still plans and integrates at high and edits at medium (0.07491ms)\n✔ model overrides cover GPT-6.1 Sol, with no dollar overrides (0.147807ms)\n✔ tests run without the pipeline's own markers, so they see a normal session (0.794977ms)\n✔ children run in JSON mode, so their work can be followed live (0.152275ms)\n✔ cost is split by role, integration included (0.163346ms)\n✔ the chat tool starts the runner with a progress stream (0.104446ms)\n✔ a child's tool calls become activity lines, and its usage becomes cost for its role (0.94575ms)\n✔ notifications a child raises become notices; everything else is ignored (0.110808ms)\n✔ progress lines are parsed strictly: malformed or unknown lines are dropped (0.139742ms)\n✔ state follows the run: stage, tasks, the current child's recent activity, cost by role, notices (0.289642ms)\n✔ collapsed, the run is two lines at most; expanded, every task and notice is listed (0.257692ms)\n✔ when the run ends, the model gets a short summary with the branch, the run record and the cost split (0.185858ms)\n✔ a child's final text is recovered from its JSON event log (0.194765ms)\n✔ 0011 and 0014 are recorded as implemented, by who built them (0.563785ms)\n✔ SPEC-0009's host-config test is superseded, and its landing says so (0.36347ms)\n✔ pi is pinned at 0.99.1 (0.19768ms)\n✔ the ladder's Sol is GPT-6.1 Sol, falling back to GPT-6 Sol, then GPT-5.6 Sol (0.453358ms)\n✔ the family is read from any version number, so a new release cannot switch escalation off (0.186269ms)\n✔ Luna escalates to GPT-6.1 Sol at medium; Sol below high to GPT-6.1 Sol at high; Sol at high stops (0.484887ms)\n✔ when a Sol does not resolve, the next one down the chain is used; with none, no retry (0.127088ms)\nℹ tests 22\nℹ suites 0\nℹ pass 22\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 77.675315\n"
-  },
-  "planTests": {
-    "code": 0,
-    "out": "✔ machina selects 6.1 Sol without disturbing the ladder or pipeline thinking (0.780481ms)\n✔ Codex 6.1 Sol override matches context and cache, never overrides cost (0.730066ms)\n✔ installer defaults pi to 0.99.1 while retaining the override (0.546503ms)\n✔ index closes only the two completed specs with their implementers (0.587429ms)\n✔ testEnv strips only pipeline markers from a new environment (0.767476ms)\n✔ role costs include integration and unknown roles exactly once (0.174116ms)\n✔ childPiArgs streams JSON and keeps the prompt last (0.75897ms)\n✔ implementArgs has stable progress and optional flag order (0.116278ms)\nℹ tests 8\nℹ suites 0\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 84.481271\n"
-  }
-}
-```
-
-## Runtime
-Stuck findings, escalations and pauses: see task session logs and telemetry in /home/george-contis/var/pipeline-runs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat/2026-09-29T23-09-48-522Z.
-Provider task cost: $0.0190649; planner: {"calls":26,"cost":0.4640336}. Quota deltas: see usage snapshots in telemetry.
-
-## Protected files diff
-
-```diff
-
-```
-
-## Report
 # SPEC-0015 integration report
 
 Start revision: `d644810bc65a0140b4fd79255b3a873c1099d58f` (integration worktree). Task results: `results.jsonl`, six Luna tasks T02/T03/T05/T09/T10/T12, all accepted on their assigned model (`gpt-6-luna`); Sol implemented remaining tasks here. No plan acceptance test was edited.
@@ -198,4 +152,3 @@ index 11c7567..0000000
 -});
 
 ```
-
