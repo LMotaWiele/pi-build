@@ -1,14 +1,14 @@
-# SPEC-NNNN: Make pi ready to develop specs through the delegated pipeline
+# SPEC-0010: Make pi ready to develop specs through the delegated pipeline
 
 | Field | Value |
 |---|---|
-| Status | ready |
+| Status | landed |
 | Size | staged (4 stages) |
 | Kind | build |
 | Parent | the `translate-specs-with-sol` spec, which built the pipeline this finishes |
 | Date | 2026-09-29 |
 | Checkpoint | continuous, with one restart after Stage 1 |
-| Run record | /docs/specs/SPEC-NNNN-run.md |
+| Run record | /docs/specs/SPEC-0010-run.md |
 | Revision | 2 — 2026-09-29, after the first run stopped at Stage 1's exit |
 
 Replace `NNNN` in this file's name, its `.tests/` and `.reference/` directories and the run record with the next free spec ID — `0010` as of `ad28fa1`. Confirm it is free.

@@ -49,7 +49,7 @@ Harness design: `docs/design/pi-setup.md`.
 7. **Notes (cheap path):** before re-deriving a diagnosis, opening a design debate, or continuing prior investigation → read `.agent/notes/INDEX.md` only, then the **one** linked file. After a finding → update that note’s front-matter, and if a pre-committed condition fired, append the resulting item to INDEX `## Active next`. Do not bulk-read notes/ or dump chat. Shape: `.agent/notes/README.md` (on demand). Prefer `docs/design/` for sealed/spec authority over notes.
 8. **INDEX is the queue.** `.agent/notes/INDEX.md § Active next` is the single authority for what happens next and for standing constraints. Notes hold *conditions* (`If → Then`), never a queue. When a condition fires, the Then writes a row into INDEX. Never read a note to find out what to work on.
 9. Small focused edits; match neighbors; no unsolicited docs; verify against source not README alone.
-10. No commit/push/PR unless asked. No production logic in scripts/notebooks/notes.
+10. Commit your own work, with messages naming the task. Never push, force-push, or rewrite commits you didn't make. No production logic in scripts/notebooks/notes.
 11. **Explanations are not notes.** Walkthroughs written for the human land in `.agent/explain/YYYY-MM-DD-slug.md` and are never referenced from INDEX. Promote to `.agent/notes/*-gotchas.md` only when the trap will recur across tasks in this repo.
 12. CRG MCP is **global** (`~/.pi/agent/settings.json`) — no project `.mcp.json` for the graph. Build once: `code-review-graph build --repo .`
 

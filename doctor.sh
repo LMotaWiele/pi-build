@@ -106,6 +106,8 @@ fi
 node --experimental-strip-types "$REPO/lib/scaffold.ts" --validate "$REPO" || fail "memory structure"
 ok "memory structure"
 
+node "$REPO/scripts/check-spec-index.mjs" "$REPO/docs/specs" || fail "spec index"
+
 shopt -s nullglob
 patch_files=("$REPO"/patches/*.patch)
 declare -A patch_seen=()

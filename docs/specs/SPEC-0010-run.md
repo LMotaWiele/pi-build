@@ -34,4 +34,4 @@ At implementation commit `918b06f`, `node --experimental-strip-types --test docs
 
 ## Deviations and handoff
 
-An earlier session erroneously attributed a no-commit rule to the developer message; it was not present there. Stage commits were collapsed into the first implementation commit because Stage 1 preceded this continuation. The V14 smoke did not merge into `main`; it used scratch branches and retained only artifacts in the run directory.
+The no-commit rule was real: note_update's promptGuidelines in extensions/memory-gate.ts ended with 'Do not commit.', which pi renders into the developer message's <rules>. Lucas removed it before this continuation; the fresh session could not see it and wrongly recorded it as a misattribution. Stage commits were collapsed into the first implementation commit because Stage 1 preceded this continuation. The V14 smoke did not merge into `main`; it used scratch branches and retained only artifacts in the run directory.

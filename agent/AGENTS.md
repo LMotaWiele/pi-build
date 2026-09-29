@@ -10,6 +10,8 @@ Open one note per task with `note_open`. Update one front-matter field with `not
 
 Explanations are not notes. They land under `.agent/explain/` and are never indexed.
 
+Commit your own work, with messages naming the task. Never push, force-push, or rewrite commits you didn't make.
+
 ## Models
 
 This session sets its model with setModel before the first inference of a turn. Do not switch models in the middle of a turn. The resolved tier map is injected from the host file. Do not copy model ids into this file.

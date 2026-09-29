@@ -13,4 +13,4 @@ Implemented by is filled when a spec is implemented, from its run record.
 | 0007 | SPEC: codebase map for pi-build | implemented | Claude cloud | 2026-09-26 | `tools/map/SPEC.md` |
 | 0008 | SPEC-0008: Move specs into /docs/specs with sequential IDs | implemented | pi | 2026-09-29 | `docs/specs/SPEC-NNNN-move-specs-into-docs-specs.md` |
 | 0009 | SPEC-0009: Move the harness to GPT-6 Sol and Luna | implemented | pi | 2026-09-29 | `docs/specs/SPEC-NNNN-migrate-to-gpt6.md` |
-| 0010 | SPEC-NNNN: Make pi ready to develop specs through the delegated pipeline | ready | pi | 2026-09-29 | — |
+| 0010 | SPEC-0010: Make pi ready to develop specs through the delegated pipeline | landed | pi | 2026-09-29 | — |
