@@ -11,7 +11,7 @@ import {
   readRework,
   defaultReworkPath,
   WHOLE_SPEC,
-} from "../../lib/rework.ts";
+} from "../../../lib/rework.ts";
 
 test("spec names normalize from path, file name, or bare name", () => {
   for (const s of ["docs/SPEC-tiered-retry.md", "SPEC-tiered-retry.md", "SPEC-tiered-retry", "tiered-retry"]) {

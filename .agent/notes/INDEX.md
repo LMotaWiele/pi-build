@@ -23,6 +23,7 @@ Ordered. Top row is what the next session picks up. One line each — detail liv
 | # | Item | Source | Added |
 |---|---|---|---|
 | 1 | Translation step 2 is graded. Step 3 waits for the next real spec. The session map views in tools/map/SPEC.md stay unbuilt, and the routing suite stays closed. | human | 2026-09-26 |
+| 2 | bounded at max loop depth 60 (loop_index 60); wrote docs/specs/index.md, docs/specs/SPEC-0009-run.md, deps.txt, install.sh, README.md, NOTICE, extensions/quota-gate.ts, settings/hosts/machina.json, settings/hosts/example.json, agent/models.json, .pi/agents/implement.md, lib/models.ts, extensions/explain.ts, extensions/bounds.ts, lib/plan.ts, scripts/run-plan.mjs, tests/run-plan-thinking.test.ts, lib/settings-keys.ts, doctor.sh, scripts/pi-rework.ts, tests/bounds-split.test.ts, docs/specs/SPEC-0005-configure-production-harness.md, tests/pi-rework.test.ts, docs/specs/SPEC-0009-migrate-to-gpt6.md; resume from 0.8.0 | SPEC-delegation-ab §3.1 | 2026-09-29 |
 
 `Source` is the note whose pre-committed condition fired, or `human` if you queued it directly.
 Close a row by deleting it. Do not leave completed rows with a status marker — the queue is not a log.

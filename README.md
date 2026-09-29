@@ -1,6 +1,6 @@
 # pi-build
 
-Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.87.0). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, a pinned session model, and a local record of what the tools did.
+Config and extensions for the [pi](https://github.com/earendil-works/pi) coding agent (`@earendil-works/pi-coding-agent` 0.87.1). Pi supplies the session, the tools, and the model providers. This repository supplies the setup that runs on top of that: project memory kept in the cached prompt, a pinned session model, and a local record of what the tools did.
 
 The clone can live anywhere. `install.sh` symlinks it into `~/.pi/agent/`.
 
@@ -11,12 +11,13 @@ Stock pi reads whatever the model asks to read, stays on the model you picked, a
 - **Memory stays in the prefix.** On session start, the project's `.agent/notes/INDEX.md` is injected into a prompt section named `pi_build_memory`. The agent opens one note per task with `note_open`, patches one front-matter field with `note_update`, and appends the queue with `queue_append`. With `memoryGate.blockRawNotesReads` true, a raw `read` of `.agent/notes/` is blocked. Explanations are a different thing: `explain_write` stores them under `.agent/explain/`, and they are not indexed.
 - **Repeated reads get cheaper.** Inside one turn, a second read of the same file replaces the previous tool result instead of sending the file again. After a write, a repeat read returns a unified diff of the changed lines. If those lines are more than half of the new file, the full file is returned. A read with `offset` and `limit` always passes through.
 - **Compaction does not drop the task.** `recap` writes a short summary the next turn can see. `explain` asks a one-shot process, on the explain tier from your host file and with thinking off, for a walkthrough after an edit turn. That walkthrough is for you. It is not a note. If that model id is not an exact catalog match, the walkthrough is skipped and the turn still finishes.
-- **The session model is pi-smart-router.** `routing.enabled` is false, so this repo does not run a second router. The router registers `smart-router/auto`. That id stays out of `enabledModels`. The `routing.tiers` map remains for the bound retry, which resolves `escalate`, and for the explain model. Thinking level for a resolved id comes from `modelThinkingLevels`.
+- **Fresh sessions start on GPT-6 Sol.** `routing.enabled` is false, so this repo does not run a second router. The installed router still registers `smart-router/auto`, which stays out of `enabledModels` and is manual-only. The `routing.tiers` map supplies the pipeline, retry ladder, and explain model.
 - **A turn can stop itself.** Bounds abort the turn, without an approval prompt, when the loop passes 60 steps, the turn passes 10 minutes, three tool calls fail in a row, or six reads in a row make no progress.
+- **Quota and context stay visible.** The footer shows context as used tokens over the window (for example `42k/272k`) instead of a percentage. Once the Codex quota gate retrieves usage, `5h` and `weekly` percentages follow that count and refresh after usage polls and response headers.
 - **Tool use is logged locally** in `~/.pi/agent/telemetry.db` (override with `PI_BUILD_TELEMETRY_DB`). `scripts/report.sql` summarizes cost, cache hit rate, escalation share, deduped reads, note opens, blocked note reads, and bound turns.
 - **Web search and subagents are pinned.** `pi-web-access` v0.30.0 reads `~/.pi/agent/web-search.json`: workflow `none`, inline content capped, image and PDF off. `pi-subagent` is pinned to commit `ce26a686f2571188d2e2b4d586e15a82606a7b72`. The `subagent` object in the host settings is not read by that package. Its own default depth is 3. The depth recorded in the host file is 2, which you set with `pi --subagent-max-depth 2` or `PI_SUBAGENT_MAX_DEPTH=2`. Cycle prevention is already the package default.
 - **Plan mode** (`/plan`, or Ctrl+Alt+P) is the pi example: read-only exploration, then execution of the numbered plan. **Post-edit typecheck** runs `tsc --noEmit` after a TypeScript edit or write, debounced, and reports the result in the status line.
-- **Cache warming is off.** `models.json` keeps the GPT-5.6 context window at 272000 and the prompt-cache TTL at 1800 seconds, so a long-context price does not reprice the whole request. `defaultProjectTrust` is `always`.
+- **Cache warming is off.** `models.json` keeps the GPT-5.6 and GPT-6 context windows at 272000 and the prompt-cache TTL at 1800 seconds, so a long-context price does not reprice the whole request. `defaultProjectTrust` is `always`.
 
 Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, `bounds`, and `map` turns off when its `enabled` field is `false`. Leaving the field out leaves the extension on. `routing.enabled` stays false. There is no routing extension. The block is the tier map.
 
@@ -27,7 +28,7 @@ Each of `memoryGate`, `readGuard`, `recap`, `explain`, `postEditTypecheck`, `bou
 - [uv](https://docs.astral.sh/uv/) is optional. The map needs it; everything else runs without it.
 - [mise](https://mise.jdx.dev/) is optional. If it is missing and Node is new enough, install continues.
 
-Pi is installed globally at 0.87.0 by the script (`npm i -g @earendil-works/pi-coding-agent@0.87.0`).
+Pi is installed globally at 0.87.1 by the script (`npm i -g @earendil-works/pi-coding-agent@0.87.1`).
 
 ## Install
 
@@ -41,7 +42,7 @@ The directory name does not matter. Clone it wherever you keep source.
 
 `install.sh` does five things:
 
-1. Installs pi 0.87.0 globally.
+1. Installs pi 0.87.1 globally.
 2. Picks `settings/hosts/<hostname>.json`. If that file is missing, it falls back to `settings/hosts/machina.json` and says so. That file is the author's model list. Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` and put your own provider ids there before you rely on the fallback. `PI_HOST=machina ./install.sh` forces the author's host file.
 3. Symlinks that host file to `~/.pi/agent/settings.json`, and symlinks `agent/AGENTS.md`, `agent/models.json`, `settings/web-search.json`, `extensions/`, `skills/`, and `lib/` into `~/.pi/agent/`. Pi loads `~/.pi/agent/extensions` and `~/.pi/agent/skills` on its own, which is why the host file does not contain a machine path. `lib/` is linked too, because the extensions import `../lib` and Pi resolves that path from the symlink. If one of those destinations already exists as a real file or directory, the script stops and tells you to move it aside.
 4. Creates `~/.config/pi/env` (mode 600) from `secrets.example.env` when the file is missing. Pi does not load this file. Export it yourself (see below).
@@ -49,7 +50,7 @@ The directory name does not matter. Clone it wherever you keep source.
 
 `secrets.example.env` lists no required names. Chat models on the author's host use `/login`. `./doctor.sh --offline` validates the checkout without a provider call.
 
-Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` before installing if this machine is not the author's. Put no secrets in that file. The `packages` array lists the two git refs, `npm:pi-context-usage`, and `npm:pi-smart-router@0.8.0`. Replace `provider/model-id` with any id pi can resolve as `provider/id`. The same id in every tier is a valid setup. With routing disabled, `defaultModel` is the model a session uses until something passes `--model`.
+Copy `settings/hosts/example.json` to `settings/hosts/<hostname>.json` before installing if this machine is not the author's. Put no secrets in that file. The `packages` array lists the two git refs, `npm:pi-context-usage`, and `npm:pi-smart-router@0.8.0`. Replace `provider/model-id` with any id pi can resolve as `provider/id`. Keep `defaultProvider` as the provider and `defaultModel` as a bare id. Pi uses that default when its composed `provider/id` is in `enabledModels`; otherwise it uses `enabledModels[0]`. The same id in every tier is valid. Codex models map `minimal` thinking to `low`.
 
 ## Credentials
 
@@ -65,7 +66,7 @@ Put that in the shell profile you use to launch pi, or export the variables anot
 
 Any pi-compatible provider works. Put that provider's id in the host file (`provider/model-id`, or `openrouter/openai/gpt-5.6-luna` when the model id itself contains a slash) and put the key's variable name in `secrets.example.env`.
 
-On the author's host, scout and explain are `openai-codex/gpt-5.6-luna`, work and the default model are `openai-codex/gpt-5.6-terra`, and escalate is `openai-codex/gpt-5.6-sol`. Those are the ChatGPT Plus or Pro subscription, signed in with `/login`, not an OpenAI API key. The subscription catalog exposes all three ids. The bound retry and the explain walkthrough resolve a tier through that map. A missing id falls through `escalate`, then `work`, then `scout`.
+On the author's host, fresh sessions and work use `openai-codex/gpt-6-sol`; scout and explain use `openai-codex/gpt-6-luna`; GPT-6 Astra is manual-only. These use the ChatGPT Plus or Pro subscription, signed in with `/login`, not an OpenAI API key. A written-file bound retries once along Luna → Sol at medium → Sol at high → stop. If GPT-6 Sol is unavailable, the retry fallback is GPT-5.6 Sol at high. Retries never target a per-token provider.
 
 You can also store a provider key with `/login`. `doctor.sh` still requires the names in `secrets.example.env` for the live checks.
 
@@ -94,7 +95,7 @@ Global instructions from this repo's `agent/AGENTS.md` apply in every project. A
 
 **Plan mode.** `/plan` or Ctrl+Alt+P toggles read-only exploration. Write tools come back when you leave the plan or execute it.
 
-**Models.** pi-smart-router pins the session model. A bound that trips after a file was written retries that turn once at the escalate tier. Each turn appends one cost line to the session log: tier, inference calls, prompt tokens, cache hit, completion tokens, reasoning share, turn cost, and cumulative session cost. Telemetry copies the router's tier when `SMART_ROUTER_DATASET` is `1`, which the harness sets when it attaches.
+**Models.** Fresh sessions use GPT-6 Sol at medium. A bound that trips after a file was written retries once along the GPT-6 ladder. Each turn appends one cost line to the session log: tier, inference calls, prompt tokens, cache hit, completion tokens, reasoning share, turn cost, and cumulative session cost. Telemetry copies the router's tier when `SMART_ROUTER_DATASET` is `1`, which the harness sets when it attaches.
 
 **Web search.** After `pi-web-access` is installed, the agent gets `web_search`, `fetch_content`, `source_check`, and `get_search_content`. Provider choice is left to the package. Image and PDF tools are disabled in `settings/web-search.json`.
 

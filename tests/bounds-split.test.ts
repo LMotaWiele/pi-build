@@ -44,16 +44,17 @@ function workspace(): { dir: string; settings: string } {
   fs.writeFileSync(
     settings,
     JSON.stringify({
-      defaultModel: "openai-codex/gpt-5.6-sol",
-      modelThinkingLevels: { "openai-codex/gpt-5.6-sol": "high" },
+      defaultProvider: "openai-codex",
+      defaultModel: "gpt-6-sol",
+      modelThinkingLevels: { "openai-codex/gpt-6-sol": "medium", "openai-codex/gpt-6-luna": "medium" },
       memoryGate: { enabled: true, autoScaffold: false, indexPath: ".agent/notes/INDEX.md" },
       routing: {
         enabled: false,
         tiers: {
-          scout: "openai-codex/gpt-5.6-sol",
-          work: "openai-codex/gpt-5.6-sol",
-          escalate: "openai-codex/gpt-5.6-sol",
-          explain: "openai-codex/gpt-5.6-sol",
+          scout: "openai-codex/gpt-6-luna",
+          work: "openai-codex/gpt-6-sol",
+          escalate: "openai-codex/gpt-6-sol",
+          explain: "openai-codex/gpt-6-luna",
         },
       },
       bounds: {
@@ -76,6 +77,8 @@ function fakePi() {
     handlers,
     sent: "",
     modelSet: false,
+    model: null as { provider: string; id: string } | null,
+    thinking: "",
     on(event: string, handler: (event: Record<string, unknown>, ctx: Record<string, unknown>) => unknown) {
       const list = handlers.get(event) ?? [];
       list.push(handler);
@@ -87,11 +90,14 @@ function fakePi() {
     sendUserMessage(text: string) {
       pi.sent = text;
     },
-    async setModel() {
+    async setModel(model: { provider: string; id: string }) {
       pi.modelSet = true;
+      pi.model = model;
       return true;
     },
-    setThinkingLevel() {},
+    setThinkingLevel(level: string) {
+      pi.thinking = level;
+    },
     async emit(event: string, payload: Record<string, unknown>, ctx: Record<string, unknown>) {
       for (const handler of handlers.get(event) ?? []) await handler(payload, ctx);
     },
@@ -154,7 +160,7 @@ test("disabling routing leaves the bounds running", async () => {
   });
 });
 
-test("a bound with written files retries once at escalate", async () => {
+test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
   const { dir, settings } = workspace();
   await withSettings(settings, async () => {
     const bounds = fakePi();
@@ -162,7 +168,8 @@ test("a bound with written files retries once at escalate", async () => {
     beginUserTurn("sess", "original prompt");
     noteWrittenFile("src/a.ts");
     bumpLoopIndex();
-    const model = { provider: "openai-codex", id: "gpt-5.6-sol" };
+    const model = { provider: "openai-codex", id: "gpt-6-luna" };
+    const sol = { provider: "openai-codex", id: "gpt-6-sol" };
     let aborted = false;
     const ctx = {
       abort() {
@@ -170,14 +177,18 @@ test("a bound with written files retries once at escalate", async () => {
       },
       cwd: dir,
       sessionManager: { getSessionId: () => "sess" },
+      model,
+      thinkingLevel: "medium",
       modelRegistry: {
-        getAll: () => [model],
-        find: (provider: string, id: string) => (provider === model.provider && id === model.id ? model : undefined),
+        getAll: () => [model, sol],
+        find: (provider: string, id: string) => [model, sol].find((candidate) => candidate.provider === provider && candidate.id === id),
       },
     };
     await bounds.emit("message_end", {}, ctx);
     assert.equal(aborted, true);
     assert.equal(bounds.modelSet, true);
+    assert.deepEqual(bounds.model, sol);
+    assert.equal(bounds.thinking, "medium");
     assert.match(bounds.sent, /^bounded at /);
     assert.match(bounds.sent, /src\/a\.ts/);
 
@@ -193,10 +204,11 @@ test("a bound with written files retries once at escalate", async () => {
 });
 
 function registry() {
-  const model = { provider: "openai-codex", id: "gpt-5.6-sol" };
+  const luna = { provider: "openai-codex", id: "gpt-6-luna" };
+  const sol = { provider: "openai-codex", id: "gpt-6-sol" };
   return {
-    getAll: () => [model],
-    find: (provider: string, id: string) => (provider === model.provider && id === model.id ? model : undefined),
+    getAll: () => [luna, sol],
+    find: (provider: string, id: string) => [luna, sol].find((candidate) => candidate.provider === provider && candidate.id === id),
   };
 }
 
@@ -220,6 +232,8 @@ test("a bound does not retry while a quota hold file exists", async () => {
         },
         cwd: dir,
         sessionManager: { getSessionId: () => "sess" },
+        model: { provider: "openai-codex", id: "gpt-6-luna" },
+        thinkingLevel: "medium",
         modelRegistry: registry(),
       };
       await bounds.emit("message_end", {}, ctx);
@@ -243,6 +257,27 @@ test("a bound does not retry while a quota hold file exists", async () => {
   }
 });
 
+test("a GPT-6 Sol turn at high thinking does not retry", async () => {
+  const { dir, settings } = workspace();
+  await withSettings(settings, async () => {
+    const bounds = fakePi();
+    await boundsExtension(bounds as never);
+    beginUserTurn("sess", "original prompt");
+    noteWrittenFile("src/a.ts");
+    bumpLoopIndex();
+    await bounds.emit("message_end", {}, {
+      abort() {},
+      cwd: dir,
+      sessionManager: { getSessionId: () => "sess" },
+      model: { provider: "openai-codex", id: "gpt-6-sol" },
+      thinkingLevel: "high",
+      modelRegistry: registry(),
+    });
+    assert.equal(bounds.modelSet, false);
+    assert.equal(bounds.sent, "");
+  });
+});
+
 test("PI_BUILD_RETRY=0 skips the bounds retry", async () => {
   const { dir, settings } = workspace();
   const previous = process.env.PI_BUILD_RETRY;
@@ -261,6 +296,8 @@ test("PI_BUILD_RETRY=0 skips the bounds retry", async () => {
         },
         cwd: dir,
         sessionManager: { getSessionId: () => "sess" },
+        model: { provider: "openai-codex", id: "gpt-6-luna" },
+        thinkingLevel: "medium",
         modelRegistry: registry(),
       });
       assert.equal(aborted, true);

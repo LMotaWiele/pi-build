@@ -33,6 +33,17 @@ export interface PlanCheck {
   errors: string[];
 }
 
+export function pipelineThinking(settings: unknown): { planner: string; editor: string } {
+  const pipeline = settings && typeof settings === "object"
+    ? (settings as { pipeline?: unknown }).pipeline
+    : undefined;
+  const block = pipeline && typeof pipeline === "object" ? pipeline as Record<string, unknown> : {};
+  return {
+    planner: typeof block.plannerThinking === "string" && block.plannerThinking ? block.plannerThinking : "high",
+    editor: typeof block.editorThinking === "string" && block.editorThinking ? block.editorThinking : "medium",
+  };
+}
+
 // Error codes, stable prefixes:
 //   UNMAPPED_VERIFY <n>             a Verify item 1..n absent from verifyMap
 //   VERIFY_UNKNOWN_REQUIREMENT <n>:<id>

@@ -6,7 +6,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs";
 import path from "node:path";
-import { selectExplainModel, stringMap } from "../lib/models.ts";
+import { defaultModelRef, selectExplainModel, stringMap } from "../lib/models.ts";
 import { explainWriteName, unifiedDiff } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
 import {
@@ -86,7 +86,7 @@ export default function explainExtension(pi: ExtensionAPI): void {
         tiers: stringMap(routing["tiers"]),
         catalog,
         routingEnabled: extensionEnabled(settings, "routing"),
-        defaultModel: typeof settings["defaultModel"] === "string" ? settings["defaultModel"] : undefined,
+        defaultModel: defaultModelRef(settings),
       });
       for (const line of selected.warnings) console.error(`[explain] ${line}`);
       if (!selected.model) return;

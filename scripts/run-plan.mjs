@@ -3,7 +3,7 @@
 // Flags stay before -p. PI_BUILD_RETRY=0 on Luna. A hold exits 75.
 //
 //   node --experimental-strip-types scripts/run-plan.mjs \
-//     --plan docs/SPEC-<name>.plan/plan.json \
+//     --plan docs/specs/SPEC-NNNN-<slug>.plan/plan.json \
 //     --run-dir ~/var/pipeline-runs/<name>/<stamp> [--resume]
 
 import { spawn, execFileSync } from "node:child_process";
@@ -15,7 +15,7 @@ import { decide } from "../extensions/jev/adapter.ts";
 import { DIFFICULTY_QUESTIONS } from "../extensions/jev/questions-difficulty.ts";
 import { QUALITY_QUESTIONS } from "../extensions/jev/questions-quality.ts";
 import { checkConformance, parseUnifiedDiff } from "../lib/conformance.ts";
-import { taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { pipelineThinking, taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
 
 const REPO = path.resolve(import.meta.dirname, "..");
 const BUDGET_TOKENS = 4000;
@@ -70,11 +70,6 @@ function modelId(settings, needle, tierKey) {
   return typeof tier === "string" ? tier : "";
 }
 
-function thinkingFor(settings, model) {
-  const levels = settings.modelThinkingLevels ?? {};
-  const level = levels[model];
-  return typeof level === "string" && level ? level : "minimal";
-}
 
 function verifyCount(specText) {
   const parts = specText.split(/^## /m);
@@ -421,8 +416,9 @@ const settings = readSettings();
 const luna = modelId(settings, "luna", "scout");
 const sol = modelId(settings, "sol", "escalate");
 if (!luna || !sol) fail("host settings have no Luna or Sol model id");
-const lunaThinking = thinkingFor(settings, luna);
-const solThinking = thinkingFor(settings, sol) === "minimal" ? "high" : thinkingFor(settings, sol);
+const pipelineLevels = pipelineThinking(settings);
+const lunaThinking = pipelineLevels.editor;
+const solThinking = pipelineLevels.planner;
 const specTests = plan.spec.replace(/\.md$/, ".tests");
 const protectedList = protectedPaths(plan);
 let pinChecked = done.size > 0;

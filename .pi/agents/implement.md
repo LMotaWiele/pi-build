@@ -2,7 +2,7 @@
 name: implement
 description: Apply one spec section to one file path. Use when the parent dispatches a single-file edit. This agent does not dispatch further agents.
 tools: read, edit, write
-model: openai-codex/gpt-5.6-luna
+model: openai-codex/gpt-6-luna
 sessionPreference: ephemeral
 ---
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validatePlan, taskOrder, undeclaredImports, type Plan, type PlanTask } from "../../lib/plan.ts";
+import { validatePlan, taskOrder, undeclaredImports, type Plan, type PlanTask } from "../../../lib/plan.ts";
 
 function task(id: string, over: Partial<PlanTask> = {}): PlanTask {
   return {

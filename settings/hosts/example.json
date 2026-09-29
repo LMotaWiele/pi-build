@@ -1,6 +1,6 @@
 {
   "defaultProvider": "provider",
-  "defaultModel": "provider/model-id",
+  "defaultModel": "model-id",
   "enabledModels": [
     "provider/model-id"
   ],
@@ -92,5 +92,9 @@
       "escalate": "provider/model-id",
       "explain": "provider/model-id"
     }
+  },
+  "pipeline": {
+    "plannerThinking": "high",
+    "editorThinking": "medium"
   }
 }

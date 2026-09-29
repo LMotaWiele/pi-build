@@ -3,7 +3,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")" && pwd)"
 HOST="${PI_HOST:-$(hostname)}"
 PI_PACKAGE="${PI_PACKAGE:-@earendil-works/pi-coding-agent}"
-PI_VERSION="${PI_VERSION:-0.87.0}"
+PI_VERSION="${PI_VERSION:-0.87.1}"
 
 node_ok() {
   node -e 'const [M,m,p]=(process.versions.node.split(".").map(Number)); if (M>22 || (M===22 && (m>19 || (m===19 && p>=0)))) process.exit(0); process.exit(1);'
@@ -50,7 +50,7 @@ link_into_agent "$REPO/settings/web-search.json" ~/.pi/agent/web-search.json
 link_into_agent "$REPO/extensions" ~/.pi/agent/extensions
 link_into_agent "$REPO/skills" ~/.pi/agent/skills
 link_into_agent "$REPO/lib" ~/.pi/agent/lib
-link_into_agent "$REPO/docs/design/SPEC-delegation-ab.md" ~/.pi/agent/SPEC-delegation-ab.md
+link_into_agent "$REPO/docs/specs/SPEC-0001-measure-delegation-against-monolithic.md" ~/.pi/agent/SPEC-delegation-ab.md
 
 if [ ! -f ~/.config/pi/env ]; then
   mkdir -p ~/.config/pi
@@ -59,7 +59,7 @@ if [ ! -f ~/.config/pi/env ]; then
   echo "→ fill in ~/.config/pi/env"
 fi
 
-# pi 0.87.0 rejects a bare `pi install` (Missing install source).
+# pi 0.87.1 rejects a bare `pi install` (Missing install source).
 pi install git:github.com/nicobailon/pi-web-access@v0.30.0
 pi install git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72
 pi install npm:pi-context-usage

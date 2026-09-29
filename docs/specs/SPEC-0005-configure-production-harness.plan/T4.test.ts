@@ -11,7 +11,7 @@ import {
   planTaskIds,
   readRework,
   validateRework,
-} from "../../lib/rework.ts";
+} from "../../../lib/rework.ts";
 
 test("all documented spec forms normalize to one join key", () => {
   for (const input of [

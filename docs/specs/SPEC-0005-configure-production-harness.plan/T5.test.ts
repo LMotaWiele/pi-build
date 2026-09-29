@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const command = path.join(repository, "scripts/pi-rework.ts");
 
 function run(cwd: string, log: string, args: string[]) {

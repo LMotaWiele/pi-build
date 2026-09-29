@@ -20,7 +20,7 @@ import {
   fetchUsage,
   USAGE_URL,
   type QuotaWindow,
-} from "../../lib/quota.ts";
+} from "../../../lib/quota.ts";
 
 const FIVE_H = 18000;
 const WEEK = 604800;

@@ -1,7 +1,7 @@
 /**
  * Turn bounds. They abort the turn. They do not prompt, except one retry
- * at escalate when the bound trip already wrote a file.
- * Tier selection stays in routing.ts. Disabling routing leaves this running.
+ * on the GPT-6 ladder when the bound trip already wrote a file.
+ * Retry policy lives in lib/tiers.ts. Disabling routing leaves this running.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -9,11 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { appendQueue } from "../lib/markdown.ts";
 import { findProjectRoot } from "../lib/scaffold.ts";
-import {
-  resolveRouting,
-  stringMap,
-  thinkingLevelFor,
-} from "../lib/models.ts";
+import { nextTier, retryAllowed } from "../lib/tiers.ts";
 import {
   attachTelemetry,
   boundReason,
@@ -36,6 +32,12 @@ import {
 import { defaultHoldPath, readHold } from "../lib/quota.ts";
 
 type SessionModel = { provider: string; id: string; name?: string };
+type BoundContext = {
+  abort: () => void;
+  model?: SessionModel;
+  thinkingLevel?: string;
+  modelRegistry?: { find: (provider: string, id: string) => unknown };
+};
 
 export function firstUnwrittenPath(noteText: string | null, written: string[]): string {
   if (!noteText) return "(unknown)";
@@ -124,28 +126,24 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
       fs.writeFileSync(file, appendQueue(fs.readFileSync(file, "utf8"), item, source, today));
     };
 
-    const retryAtEscalate = async (
-      ctx: { modelRegistry?: { getAll: () => SessionModel[]; find: (provider: string, id: string) => unknown } },
-      line: string,
-    ) => {
-      const live = readPiSettings();
-      const routingBlock = settingsBlock(live, "routing");
-      const tiers = stringMap(routingBlock["tiers"]);
-      const catalog = ctx.modelRegistry?.getAll?.().map((model) => ({ provider: model.provider, id: model.id, name: model.name })) ?? [];
-      const plan = resolveRouting({
-        tiers,
-        catalog,
-        routingEnabled: true,
-        defaultModel: typeof live["defaultModel"] === "string" ? live["defaultModel"] : undefined,
-      });
-      const chosen = plan.tiers.escalate;
-      if (!chosen || !ctx.modelRegistry) {
-        console.error("[bounds] retry skipped; escalate did not resolve");
+    const retryAtNextTier = async (ctx: BoundContext, line: string) => {
+      if (!ctx.model || !ctx.modelRegistry) {
+        console.error("[bounds] retry skipped; current model or registry is unavailable");
         return;
       }
-      const model = ctx.modelRegistry.find(chosen.provider, chosen.id);
+      const current = `${ctx.model.provider}/${ctx.model.id}`;
+      const target = nextTier(current, ctx.thinkingLevel, (modelId) => {
+        const [provider, id] = modelId.split("/", 2);
+        return Boolean(provider && id && ctx.modelRegistry?.find(provider, id));
+      });
+      if (!target) {
+        console.error(`[bounds] retry skipped; no next tier for ${current}`);
+        return;
+      }
+      const [provider, id] = target.model.split("/", 2);
+      const model = provider && id ? ctx.modelRegistry.find(provider, id) : undefined;
       if (!model) {
-        console.error(`[bounds] retry skipped; ${chosen.modelId} is not in the registry`);
+        console.error(`[bounds] retry skipped; ${target.model} is not in the registry`);
         return;
       }
       let ok = false;
@@ -155,21 +153,16 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
         console.error("[bounds] retry setModel failed", err);
       }
       if (!ok) {
-        console.error(`[bounds] retry skipped; setModel refused ${chosen.modelId}`);
+        console.error(`[bounds] retry skipped; setModel refused ${target.model}`);
         return;
       }
-      const levels = (live["modelThinkingLevels"] ?? {}) as Record<string, unknown>;
-      const level = thinkingLevelFor(chosen.modelId, levels);
-      if (level) pi.setThinkingLevel(level as "low");
-      setActiveTier("escalate", chosen.modelId);
+      pi.setThinkingLevel(target.thinking);
+      setActiveTier("escalate", target.model);
       pi.sendUserMessage(line, { deliverAs: "followUp" });
-      console.error(`[bounds] retry at escalate ${chosen.modelId}`);
+      console.error(`[bounds] retry at ${target.model} (${target.thinking})`);
     };
 
-    const fireBound = async (
-      ctx: { abort: () => void; modelRegistry?: { getAll: () => SessionModel[]; find: (provider: string, id: string) => unknown } },
-      reason: string,
-    ) => {
+    const fireBound = async (ctx: BoundContext, reason: string) => {
       if (boundFired) return;
       boundFired = true;
       firedFor = currentPrompt();
@@ -198,10 +191,9 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
       const prompt = currentPrompt();
       const held = readHold(defaultHoldPath(process.env)) !== null;
       const retry =
-        !held &&
-        process.env.PI_BUILD_RETRY !== "0" &&
         written.length > 0 &&
         !explainOneShot() &&
+        retryAllowed({ env: process.env, held, alreadyRetried: false }) &&
         claimBoundRetry(prompt);
       const line = boundCheckpointLine(reason, written, firstUnwrittenPath(noteText, written));
       await runBoundAbort({
@@ -210,7 +202,7 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
         resumeFrom: firstUnwrittenPath(noteText, written),
         queueAppend: appendLiveQueue,
         setRecap: setLastRecap,
-        beforeAbort: retry ? () => retryAtEscalate(ctx, line) : undefined,
+        beforeAbort: retry ? () => retryAtNextTier(ctx, line) : undefined,
         abort: () => ctx.abort(),
       });
     };

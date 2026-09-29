@@ -48,6 +48,14 @@ const FALLBACK: Record<string, string[]> = {
 
 const THINKING = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
+export function defaultModelRef(settings: { defaultProvider?: unknown; defaultModel?: unknown }): string | undefined {
+  const model = typeof settings.defaultModel === "string" ? settings.defaultModel.trim() : "";
+  if (!model) return undefined;
+  if (model.includes("/")) return model;
+  const provider = typeof settings.defaultProvider === "string" ? settings.defaultProvider.trim() : "";
+  return provider ? `${provider}/${model}` : model;
+}
+
 export function splitModelRef(configured: string): { provider: string; id: string } {
   const slash = configured.indexOf("/");
   if (slash < 0) return { provider: "", id: configured };

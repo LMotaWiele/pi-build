@@ -4,7 +4,7 @@
 **Acceptance tests:** `docs/SPEC-production-config.tests/` — may not be edited by the implementer. They cover §2 and §5.2.
 **Reference implementation:** `docs/SPEC-production-config.reference/` — `lib/tiers.ts`, `lib/rework.ts`, `scripts/pi-rework.ts`, `bin/pi-rework`. Copy into place; passes the tests as delivered.
 
-**Status:** open
+**Status:** open. The GPT-5.6 retry ladder is superseded by `docs/specs/SPEC-0009-migrate-to-gpt6.md`.
 **Executor:** Grok Build
 **Written:** 2026-09-26
 **Supersedes:** `docs/SPEC-routing-orchestration.md` §5.4 onward and §13. Its §1–§4, §12 and the outcome matrix stand as the record.

@@ -6,7 +6,7 @@ the attributions and the exception below.
 
 extensions/plan-mode/
   Copied unchanged, apart from this notice, from
-  @earendil-works/pi-coding-agent 0.87.0
+  @earendil-works/pi-coding-agent 0.87.1
   examples/extensions/plan-mode/index.ts
   examples/extensions/plan-mode/utils.ts
   Copyright (c) 2025 Mario Zechner

@@ -46,6 +46,19 @@ for f in "${json_files[@]}"; do
 done
 ok "json"
 
+for host in "$REPO"/settings/hosts/*.json; do
+  default_provider="$(jq -r '.defaultProvider // empty' "$host")"
+  default_model="$(jq -r '.defaultModel // empty' "$host")"
+  if [[ "$default_model" == */* ]]; then
+    fail "$(basename "$host"): defaultModel must be a bare id"
+  fi
+  if [ -n "$default_model" ] && [ -n "$default_provider" ] && jq -e '.enabledModels? | type == "array" and length > 0' "$host" >/dev/null; then
+    jq -e --arg model "$default_provider/$default_model" '.enabledModels | index($model) != null' "$host" >/dev/null \
+      || fail "$(basename "$host"): enabledModels omits $default_provider/$default_model"
+  fi
+done
+ok "host default models"
+
 node --experimental-strip-types "$REPO/lib/settings-keys.ts" || fail "unread settings key"
 ok "settings keys"
 
@@ -153,6 +166,16 @@ if [ "$missing" -ne 0 ]; then
   echo "FAIL: provider smoke, note_open, queue_append, and guarded read were not run because a secret is unset" >&2
   exit 1
 fi
+
+catalog="$(pi --list-models)"
+while IFS= read -r model; do
+  [ -z "$model" ] && continue
+  provider="${model%%/*}"
+  id="${model#*/}"
+  printf '%s\n' "$catalog" | awk -v provider="$provider" -v id="$id" '$1 == provider && $2 == id { found = 1 } END { exit !found }' \
+    || fail "machina.json: model $model is absent from pi --list-models"
+done < <(jq -r '[.enabledModels[]?, .routing.tiers[]?, ((.defaultProvider // "") + "/" + (.defaultModel // ""))] | unique[] | select(test("^[^/]+/.+$"))' "$REPO/settings/hosts/machina.json")
+ok "host models are in pi catalog"
 
 time_pi() {
   local model="$1"

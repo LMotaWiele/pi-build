@@ -4,7 +4,7 @@
 // All decisions are made by lib/quota.ts (tested). This file only moves data
 // between pi and that module.
 //
-// Verified against @earendil-works/pi-coding-agent 0.87.0:
+// Verified against @earendil-works/pi-coding-agent 0.87.1:
 //   ExtensionAPI is the type the other extensions import.
 //   ctx.model.provider is the active provider id. ctx.model may be undefined.
 //   ctx.modelRegistry.getApiKeyForProvider(provider) => Promise<string | undefined>.
@@ -35,6 +35,7 @@
 // clears a hold from outside pi. No hold is ever lifted automatically.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   applyHeaderUsage,
   clearHold,
@@ -54,18 +55,55 @@ import {
   type Hold,
   type QuotaWindow,
 } from "../lib/quota.ts";
+import {
+  collectFooterUsage,
+  contextTokenText,
+  formatFooterCwd,
+  formatFooterTokens,
+  quotaFooterParts,
+} from "../lib/footer.ts";
 import { readPiSettings, settingsBlock } from "../lib/telemetry.ts";
 
 const PROVIDER = "openai-codex";
 export const HOLD_EXIT_CODE = 75;
 
+type FooterData = {
+  getGitBranch: () => string | null;
+  getExtensionStatuses: () => Map<string, string>;
+  getAvailableProviderCount: () => number;
+  onBranchChange: (callback: () => void) => () => void;
+};
+
+type FooterTheme = {
+  fg: (color: string, text: string) => string;
+  bold: (text: string) => string;
+};
+
 type Ctx = {
-  model?: { provider?: string };
+  mode?: string;
+  cwd?: string;
+  model?: { provider?: string; id?: string; reasoning?: boolean; contextWindow?: number };
+  thinkingLevel?: string;
   modelRegistry?: { getApiKeyForProvider?: (provider: string) => Promise<string | undefined> };
+  sessionManager?: {
+    getEntries?: () => Array<Record<string, unknown>>;
+    getCwd?: () => string;
+    getSessionName?: () => string | undefined;
+  };
+  getContextUsage?: () => { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
   hasUI?: boolean;
   ui?: {
     confirm?: (title: string, message: string) => Promise<boolean>;
     notify?: (message: string, type?: "info" | "warning" | "error") => void;
+    setFooter?: (
+      factory:
+        | ((
+            tui: { requestRender: () => void },
+            theme: FooterTheme,
+            footerData: FooterData,
+          ) => { render: (width: number) => string[]; invalidate: () => void; dispose: () => void })
+        | undefined,
+    ) => void;
   };
   abort?: () => void;
 };
@@ -77,6 +115,99 @@ export default function quotaGate(pi: ExtensionAPI) {
   const thresholds = resolveThresholds(loadQuotaSettings(), env);
   let windows: QuotaWindow[] = [];
   let lastProviderStatus: number | undefined;
+  let requestFooterRender: (() => void) | null = null;
+
+  function refreshFooter(): void {
+    requestFooterRender?.();
+  }
+
+  function installFooter(ctx: Ctx): void {
+    if (ctx.mode !== "tui" || !ctx.ui?.setFooter || !ctx.sessionManager) return;
+    const compaction = settingsBlock(readPiSettings(), "compaction");
+    const autoCompact = compaction["enabled"] !== false;
+    ctx.ui.setFooter((tui, theme, footerData) => {
+      const requestRender = () => tui.requestRender();
+      requestFooterRender = requestRender;
+      const unsubscribe = footerData.onBranchChange(requestRender);
+      return {
+        invalidate() {},
+        dispose() {
+          unsubscribe();
+          if (requestFooterRender === requestRender) requestFooterRender = null;
+        },
+        render(width: number): string[] {
+          const entries = ctx.sessionManager?.getEntries?.() ?? [];
+          const usage = collectFooterUsage(entries);
+          const context = ctx.getContextUsage?.();
+          const contextWindow = context?.contextWindow ?? ctx.model?.contextWindow ?? 0;
+          const contextText = `${contextTokenText(context?.tokens, contextWindow)}${autoCompact ? " (auto)" : ""}`;
+          const contextPercent = context?.percent ?? 0;
+          const parts: string[] = [];
+          if (usage.input) parts.push(theme.fg("dim", `↑${formatFooterTokens(usage.input)}`));
+          if (usage.output) parts.push(theme.fg("dim", `↓${formatFooterTokens(usage.output)}`));
+          if (usage.cacheRead) parts.push(theme.fg("dim", `R${formatFooterTokens(usage.cacheRead)}`));
+          if (usage.cacheWrite) parts.push(theme.fg("dim", `W${formatFooterTokens(usage.cacheWrite)}`));
+          if ((usage.cacheRead || usage.cacheWrite) && usage.latestCacheHitRate !== undefined) {
+            parts.push(theme.fg("dim", `CH${usage.latestCacheHitRate.toFixed(1)}%`));
+          }
+          const subscription = ctx.model?.provider === PROVIDER || ctx.model?.provider === "kimi-coding";
+          if (usage.cost || subscription) {
+            parts.push(theme.fg("dim", `$${usage.cost.toFixed(3)}${subscription ? " (sub)" : ""}`));
+          }
+          parts.push(
+            contextPercent > 90
+              ? theme.fg("error", contextText)
+              : contextPercent > 70
+                ? theme.fg("warning", contextText)
+                : theme.fg("dim", contextText),
+          );
+          for (const quota of quotaFooterParts(windows)) parts.push(theme.fg("dim", quota));
+          if (process.env.PI_EXPERIMENTAL === "1") parts.push(theme.bold(theme.fg("warning", "xp")));
+
+          const left = parts.join(" ");
+          const modelName = ctx.model?.id || "no-model";
+          let modelText = modelName;
+          if (ctx.model?.reasoning) {
+            const thinking = ctx.thinkingLevel || "off";
+            modelText = thinking === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinking}`;
+          }
+          let right = modelText;
+          if (footerData.getAvailableProviderCount() > 1 && ctx.model?.provider) {
+            const withProvider = `(${ctx.model.provider}) ${modelText}`;
+            if (visibleWidth(left) + 2 + visibleWidth(withProvider) <= width) right = withProvider;
+          }
+          const leftWidth = visibleWidth(left);
+          let statsLine = left;
+          if (leftWidth < width) {
+            const availableRight = width - leftWidth - 2;
+            if (availableRight > 0) {
+              const shownRight = truncateToWidth(theme.fg("dim", right), availableRight, "");
+              const padding = " ".repeat(Math.max(1, width - leftWidth - visibleWidth(shownRight)));
+              statsLine = left + padding + shownRight;
+            }
+          }
+          statsLine = truncateToWidth(statsLine, width, theme.fg("dim", "..."));
+
+          const cwd = ctx.sessionManager?.getCwd?.() ?? ctx.cwd ?? process.cwd();
+          let location = formatFooterCwd(cwd, process.env.HOME || process.env.USERPROFILE);
+          const branch = footerData.getGitBranch();
+          if (branch) location += ` (${branch})`;
+          const sessionName = ctx.sessionManager?.getSessionName?.();
+          if (sessionName) location += ` • ${sessionName}`;
+          const lines = [truncateToWidth(theme.fg("dim", location), width, theme.fg("dim", "...")), statsLine];
+          const statuses = footerData.getExtensionStatuses();
+          if (statuses.size) {
+            const statusLine = Array.from(statuses.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([, text]) => text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim())
+              .join(" ");
+            lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "...")));
+          }
+          return lines;
+        },
+      };
+    });
+  }
 
   function isCodex(ctx: Ctx): boolean {
     return ctx?.model?.provider === PROVIDER;
@@ -185,6 +316,7 @@ export default function quotaGate(pi: ExtensionAPI) {
     if (ws && ws.length) {
       windows = ws;
       record("snapshot", ws);
+      refreshFooter();
     }
     return ws;
   }
@@ -195,6 +327,7 @@ export default function quotaGate(pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx: Ctx) => {
+    installFooter(ctx);
     if (isCodex(ctx)) await poll(ctx);
     setSoftHoldIfNeeded();
     const hold = readHold(holdPath);
@@ -219,6 +352,7 @@ export default function quotaGate(pi: ExtensionAPI) {
     } else {
       windows = applyHeaderUsage(windows, usage);
     }
+    refreshFooter();
     setSoftHoldIfNeeded();
   });
 

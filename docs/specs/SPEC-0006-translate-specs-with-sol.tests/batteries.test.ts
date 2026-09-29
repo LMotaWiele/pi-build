@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DIFFICULTY_QUESTIONS } from "../../extensions/jev/questions-difficulty.ts";
-import { QUALITY_QUESTIONS } from "../../extensions/jev/questions-quality.ts";
+import { DIFFICULTY_QUESTIONS } from "../../../extensions/jev/questions-difficulty.ts";
+import { QUALITY_QUESTIONS } from "../../../extensions/jev/questions-quality.ts";
 
 const JUDGMENT = /\b(hard|harder|difficult|easy|complex|complicated|simple|correct|correctly|good|bad|quality|risky|safe)\b/i;
 

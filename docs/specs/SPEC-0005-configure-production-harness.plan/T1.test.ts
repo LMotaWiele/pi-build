@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { familyOf, nextTier, retryAllowed } from "../../lib/tiers.ts";
+import { familyOf, nextTier, retryAllowed } from "../../../lib/tiers.ts";
 
 const TERRA = "openai-codex/gpt-5.6-terra";
 const SOL = "openai-codex/gpt-5.6-sol";

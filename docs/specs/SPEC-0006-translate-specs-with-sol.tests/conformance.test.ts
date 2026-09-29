@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkConformance, parseUnifiedDiff, type DiffFile } from "../../lib/conformance.ts";
-import type { PlanTask } from "../../lib/plan.ts";
+import { checkConformance, parseUnifiedDiff, type DiffFile } from "../../../lib/conformance.ts";
+import type { PlanTask } from "../../../lib/plan.ts";
 
 const task: PlanTask = {
   id: "T1",

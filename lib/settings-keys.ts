@@ -1,5 +1,5 @@
 /**
- * Keys in settings/hosts/example.json that pi 0.87.0 reads itself.
+ * Keys in settings/hosts/example.json that pi 0.87.1 reads itself.
  * Doctor requires every example.json key to appear as a string literal under extensions/ or lib/.
  */
 import fs from "node:fs";
@@ -8,7 +8,12 @@ import { fileURLToPath } from "node:url";
 
 export const PI_OWNED_SETTING_KEYS = [
   "defaultProvider",
+  "defaultModel",
   "enabledModels",
+  "modelThinkingLevels",
+  "pipeline",
+  "plannerThinking",
+  "editorThinking",
   "cacheWarming",
   "defaultProjectTrust",
   "skills",
