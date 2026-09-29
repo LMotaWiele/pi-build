@@ -1,7 +1,7 @@
 # Map configuration for this repository. Read by tools/map (python -m map_build).
 
 # Plugin fixtures are inputs to conformance tests, not part of this project.
-exclude = [".agent/map/**", "results/**", "**/*.lock", "tools/map/**/fixtures/**", "tools/map/fixtures/**"]
+exclude = [".agent/map/**", "results/**", "**/*.lock", "tools/map/**/fixtures/**", "tools/map/fixtures/**", "docs/specs/*.reference/**", "tests/fixtures/**"]
 
 # The same order telemetryPath() uses. Unset variables are skipped; a missing file is a warning.
 [[stores.sqlite]]
