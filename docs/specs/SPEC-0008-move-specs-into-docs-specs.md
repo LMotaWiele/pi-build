@@ -1,8 +1,8 @@
-# SPEC-NNNN: Move specs into /docs/specs with sequential IDs
+# SPEC-0008: Move specs into /docs/specs with sequential IDs
 
 | Field | Value |
 |---|---|
-| Status | ready |
+| Status | implemented |
 | Size | M |
 | Kind | build |
 | Parent | — |

@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
+import { listSpecs, resolveSpec, specPaths } from "../lib/specs.ts";
 import {
   appendRework,
   defaultReworkPath,
@@ -28,21 +29,18 @@ function repoRoot(): string {
 function projectSpecs(root: string): SpecEntry[] {
   const dir = join(root, "docs", "specs");
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .map((file) => {
-      const match = file.match(/^SPEC-(\d{4})-(.+)\.md$/);
-      return match ? { id: match[1], slug: match[2], file: join(dir, file), stem: file.slice(0, -3) } : null;
-    })
-    .filter((entry): entry is SpecEntry => entry !== null)
-    .sort((a, b) => a.id.localeCompare(b.id));
+  return listSpecs(readdirSync(dir)).map((spec) => ({
+    ...spec, file: join(dir, specPaths(spec).spec), stem: spec.file.slice(0, -3),
+  }));
 }
 
 function selectSpec(input: string, specs: SpecEntry[]): { entry: SpecEntry | null; error: string | null } {
   const name = basename(input.trim()).replace(/\.md$/i, "");
   const key = name.replace(/^SPEC-/i, "");
-  const matches = /^\d{4}$/.test(key)
-    ? specs.filter((entry) => entry.id === key)
-    : specs.filter((entry) => entry.slug === key || `${entry.id}-${entry.slug}` === key);
+  const resolved = resolveSpec(specs.map((entry) => basename(entry.file)), name);
+  const matches = resolved.ok && !/^\d{1,3}$/.test(key)
+    ? specs.filter((entry) => entry.id === resolved.spec.id)
+    : [];
   if (matches.length === 1) return { entry: matches[0], error: null };
   const candidates = specs.map((entry) => `${entry.id} ${entry.slug}`).join(", ") || "(none)";
   return { entry: null, error: `${matches.length ? "Ambiguous" : "Unknown"} spec "${input}". Candidates: ${candidates}` };

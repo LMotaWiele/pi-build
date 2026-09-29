@@ -286,12 +286,16 @@ export function validateProject(root: string, templatesDir = templatesDirFromSet
   else pass("skill matches README");
 
   const agentDir = path.join(project, ".agent");
-  // The generated map names harness paths by design; it is output, not memory.
-  const mapDir = path.join(agentDir, "map") + path.sep;
-  for (const file of walkFiles(agentDir)) {
-    if (file.startsWith(mapDir)) continue;
-    const text = fs.readFileSync(file, "utf8");
-    if (NEUTRAL.test(text)) fail(`harness name in ${path.relative(project, file)}`);
+  // The harness's own notes may name its paths; other projects must stay neutral.
+  const harnessRoot = path.resolve(path.dirname(fs.realpathSync(fileURLToPath(import.meta.url))), "..");
+  if (fs.realpathSync(project) !== harnessRoot) {
+    // Generated map and explanations are output, not project memory.
+    const outputDirs = ["map", "explain"].map((name) => path.join(agentDir, name) + path.sep);
+    for (const file of walkFiles(agentDir)) {
+      if (outputDirs.some((dir) => file.startsWith(dir))) continue;
+      const text = fs.readFileSync(file, "utf8");
+      if (NEUTRAL.test(text)) fail(`harness name in ${path.relative(project, file)}`);
+    }
   }
   if (!lines.some((line) => line.startsWith("FAIL: harness name"))) pass("neutrality");
 

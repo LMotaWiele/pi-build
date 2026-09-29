@@ -4,6 +4,7 @@ import { ReadGuard, renderRepeat } from "../extensions/read-guard.ts";
 import {
   beginUserTurn,
   boundReason,
+  DEFAULT_BOUNDS,
   contextEpoch,
   countsAsEdit,
   countsAsRead,
@@ -83,11 +84,12 @@ test("a deduped read does not move reads; a passed read does", () => {
   resetTelemetryForTests();
 });
 
-test("bounds fire on the configured backstops", () => {
-  const base = { sessionId: "s", turnId: "t", loopIndex: 1, elapsedMs: 1, consecutiveFailures: 0, reads: 0, edits: 0 };
-  assert.equal(boundReason({ ...base, loopIndex: 60 }), "max loop depth 60 (loop_index 60)");
-  assert.match(boundReason({ ...base, elapsedMs: 600_000 }) ?? "", /wall clock/);
-  assert.match(boundReason({ ...base, consecutiveFailures: 3 }) ?? "", /consecutive/);
-  assert.match(boundReason({ ...base, reads: 6, edits: 0 }) ?? "", /no progress/);
-  assert.equal(boundReason({ ...base, reads: 6, edits: 1 }), null);
+test("only token and cost budgets bound a turn", () => {
+  const base = {
+    sessionId: "s", turnId: "t", loopIndex: 1, elapsedMs: 1,
+    consecutiveFailures: 0, reads: 0, edits: 0, promptTokens: 0, costUsd: 0,
+  };
+  assert.equal(boundReason({ ...base, loopIndex: 600, elapsedMs: 60_000_000, consecutiveFailures: 30, reads: 60 }), null);
+  assert.match(boundReason({ ...base, promptTokens: DEFAULT_BOUNDS.maxTurnPromptTokens }) ?? "", /prompt tokens/);
+  assert.match(boundReason({ ...base, costUsd: DEFAULT_BOUNDS.maxTurnCostUsd }) ?? "", /turn cost/);
 });

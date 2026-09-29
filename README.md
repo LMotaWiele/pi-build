@@ -113,6 +113,12 @@ pi --subagent-max-depth 2
 
 The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `postEditTypecheck`, and `bounds`. Plan mode has no settings flag; leave it with `/plan`.
 
+## Developing with pi
+
+Write a spec in the current template with its sibling `.tests/` directory. From this repository, preview the run with `bin/pi-implement <spec> --dry-run`, then start it with `bin/pi-implement <spec>`. Review the resulting branch, run record and report before merging. If something later proves wrong, use `bin/pi-rework`.
+
+Stuck loops receive a nudge, then escalate through the retry ladder; token and cost budgets stop the turn instead of retrying. The 5-hour quota window pauses and resumes automatically. The weekly window holds for you; release it with `bin/pi-continue`. Use `bin/pi-implement <spec> --resume` to continue a held pipeline run.
+
 ## Map
 
 `extensions/map.ts` rebuilds a map of the project after every turn that read or wrote a file inside it. The build is `tools/map`, a Python tool run with [uv](https://docs.astral.sh/uv/); the extension never waits for it, and a second request during a build runs once more when the first exits. Without `uv` on `PATH` the extension logs one warning and stays off.

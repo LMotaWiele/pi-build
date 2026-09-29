@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Run a Sol plan: one pi process per Luna task, then one Sol integration session.
-// Flags stay before -p. PI_BUILD_RETRY=0 on Luna. A hold exits 75.
+// Flags stay before -p. A hold exits 75.
 //
 //   node --experimental-strip-types scripts/run-plan.mjs \
 //     --plan docs/specs/SPEC-NNNN-<slug>.plan/plan.json \
@@ -15,7 +15,8 @@ import { decide } from "../extensions/jev/adapter.ts";
 import { DIFFICULTY_QUESTIONS } from "../extensions/jev/questions-difficulty.ts";
 import { QUALITY_QUESTIONS } from "../extensions/jev/questions-quality.ts";
 import { checkConformance, parseUnifiedDiff } from "../lib/conformance.ts";
-import { pipelineThinking, taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { countVerifyChecks, pipelineThinking, taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { testCommands } from "../lib/pipeline.ts";
 
 const REPO = path.resolve(import.meta.dirname, "..");
 const BUDGET_TOKENS = 4000;
@@ -70,16 +71,6 @@ function modelId(settings, needle, tierKey) {
   return typeof tier === "string" ? tier : "";
 }
 
-
-function verifyCount(specText) {
-  const parts = specText.split(/^## /m);
-  const section = [...parts].reverse().find((part) => /^(\d+\.\s+)?Verify\b/.test(part));
-  if (!section) return 0;
-  // The heading is "8. Verify" after the "## " split. Its number is the section, not an item.
-  const body = section.replace(/^[^\n]*\n/, "");
-  const nums = [...body.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
-  return nums.length ? Math.max(...nums) : 0;
-}
 
 function readResults(file) {
   if (!fs.existsSync(file)) return [];
@@ -242,7 +233,7 @@ function restoreProtected(work, commit, paths) {
   git(work, ["checkout", commit, "--", ...args]);
 }
 
-function expandTests(cwd, files) {
+function collectTestFiles(cwd, files) {
   const found = [];
   const walk = (rel) => {
     const abs = path.resolve(cwd, rel);
@@ -250,7 +241,6 @@ function expandTests(cwd, files) {
     try {
       stat = fs.statSync(abs);
     } catch {
-      found.push(rel);
       return;
     }
     if (!stat.isDirectory()) {
@@ -260,24 +250,23 @@ function expandTests(cwd, files) {
     for (const name of fs.readdirSync(abs)) walk(path.join(rel, name));
   };
   for (const file of files) walk(file);
-  const tests = found.filter((rel) => /\.test\.(?:ts|js|mjs)$/.test(rel));
-  return tests.length ? tests : found;
+  return found;
 }
 
-function runNodeTest(cwd, files) {
-  const list = expandTests(cwd, files);
-  if (!list.length) return { code: 0, out: "no files\n" };
+function runTests(cwd, files, pythonProject) {
+  const commands = testCommands(collectTestFiles(cwd, files), { pythonProject });
+  if (!commands.length) return { code: 1, out: "no recognized test files\n" };
   let code = 0;
   let out = "";
-  try {
-    out = execFileSync(
-      process.execPath,
-      ["--experimental-strip-types", "--test", ...list],
-      { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 },
-    );
-  } catch (err) {
-    code = err.status ?? 1;
-    out = `${err.stdout || ""}${err.stderr || ""}`;
+  for (const command of commands) {
+    try {
+      out += execFileSync(command.cmd, command.args, {
+        cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024,
+      });
+    } catch (err) {
+      code = err.status ?? 1;
+      out += `${err.stdout || ""}${err.stderr || ""}`;
+    }
   }
   return { code, out };
 }
@@ -322,9 +311,9 @@ function stopForHold(planPath, runDir, detail) {
   process.exit(75);
 }
 
-function runPi(args, cwd, env, logPath) {
+function runPi(args, cwd, env, logPath, append = false) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  const logFd = fs.openSync(logPath, "w");
+  const logFd = fs.openSync(logPath, append ? "a" : "w");
   const started = Date.now();
   return new Promise((resolve) => {
     const child = spawn("pi", args, { cwd, env, stdio: ["ignore", logFd, logFd] });
@@ -339,17 +328,52 @@ function runPi(args, cwd, env, logPath) {
   });
 }
 
-function piArgs(model, thinking, prompt) {
-  return ["--model", model, "--thinking", thinking, "--no-session", "--approve", "-p", prompt];
+function piArgs(model, thinking, prompt, sessionDir, continuing = false) {
+  return ["--model", model, "--thinking", thinking, "--session-dir", sessionDir,
+    ...(continuing ? ["--continue"] : []), "--approve", "-p", prompt];
+}
+
+function continuationCount(sessionDir) {
+  if (!fs.existsSync(sessionDir)) return 0;
+  let count = 0;
+  for (const name of fs.readdirSync(sessionDir).filter((file) => file.endsWith(".jsonl"))) {
+    for (const line of fs.readFileSync(path.join(sessionDir, name), "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === "custom" && entry.customType === "pi-build-continue-needed") count++;
+      } catch { /* an unfinished final line is not a recorded entry */ }
+    }
+  }
+  return count;
+}
+
+async function runPiWithContinuation(model, thinking, prompt, work, env, logPath, sessionDir, onHold) {
+  fs.mkdirSync(sessionDir, { recursive: true });
+  let seen = continuationCount(sessionDir);
+  let wallS = 0;
+  for (let attempts = 0; attempts < 10; attempts++) {
+    const run = await runPi(piArgs(model, thinking, attempts ? "continue" : prompt, sessionDir, attempts > 0),
+      work, env, logPath, attempts > 0);
+    wallS += run.wallS;
+    if (run.code === 75) onHold();
+    const recorded = continuationCount(sessionDir);
+    if (recorded <= seen || run.code !== 0) return { ...run, wallS };
+    seen = recorded;
+  }
+  throw new Error(`too many overflow continuations in ${sessionDir}`);
 }
 
 function lunaPrompt(task) {
   return `${task.brief}\n\nAcceptance test: ${task.acceptanceTest}\nyou may run this test; you may not edit it`;
 }
 
-function solPrompt(planFile, resultsFile, specTests) {
+function solPrompt(planFile, resultsFile, commands, reportPath, specPath) {
   return [
-    `The plan is \`${planFile}\`; per-task results are \`${resultsFile}\`. Run the typecheck, the spec tests in \`${specTests}\`, and every plan acceptance test. Fix every failure, and implement every task assigned to "sol".`,
+    `The plan is \`${planFile}\`; per-task results are \`${resultsFile}\`. Run the typecheck and the spec and plan acceptance tests using these commands (from the worktree):`,
+    ...commands.map((command) => `${command.cmd} ${command.args.map((arg) => JSON.stringify(arg)).join(" ")}`),
+    'Fix every failure, and implement every task assigned to "sol".',
+    `Write \`${reportPath}\` following §10 of \`${specPath}\`, including commands, results and any deviations.`,
     "",
     "You may not edit the spec tests. You may edit a plan acceptance test only if it contradicts the spec — record each such edit and why, because it is an error in your own plan.",
   ].join("\n");
@@ -390,7 +414,7 @@ if (planRel.startsWith("..")) fail(`plan is outside the repository: ${planPath}`
 const plan = readJson(planPath);
 const specPath = path.resolve(REPO, plan.spec);
 const specText = fs.readFileSync(specPath, "utf8");
-const count = verifyCount(specText);
+const count = countVerifyChecks(specText);
 const check = validatePlan(plan, count);
 if (!check.ok) fail(`validatePlan failed:\n${check.errors.join("\n")}`);
 
@@ -413,6 +437,7 @@ const work = ensureWorktree(runDir, commit);
 const resultsFile = path.join(runDir, "results.jsonl");
 const done = new Set(readResults(resultsFile).map((row) => row.id));
 const settings = readSettings();
+const pythonProject = settings.pipeline?.pythonProject || "tools/map";
 const luna = modelId(settings, "luna", "scout");
 const sol = modelId(settings, "sol", "escalate");
 if (!luna || !sol) fail("host settings have no Luna or Sol model id");
@@ -435,7 +460,7 @@ for (const task of ordered) {
   const testAbs = path.resolve(work, task.acceptanceTest);
   if (!fs.existsSync(testAbs)) fail(`missing acceptance test ${task.acceptanceTest}`);
   const testSource = fs.readFileSync(testAbs, "utf8");
-  const before = runNodeTest(work, [task.acceptanceTest]);
+  const before = runTests(work, [task.acceptanceTest], pythonProject);
   if (before.code === 0) fail(`${task.id} acceptance test already passes at ${commit}. The plan gate failed.`);
   const anchors = {
     ...difficultyAnchors(task, plan, work, commit, testSource),
@@ -452,10 +477,11 @@ for (const task of ordered) {
   fs.mkdirSync(taskDir, { recursive: true });
   const dbPath = path.join(taskDir, "telemetry.db");
   const logPath = path.join(taskDir, "pi.log");
-  const env = { ...process.env, PI_BUILD_RETRY: "0", PI_BUILD_TELEMETRY_DB: dbPath };
+  const env = { ...process.env, PI_BUILD_TELEMETRY_DB: dbPath };
+  delete env.PI_BUILD_RETRY;
   delete env.PI_OFFLINE;
-  const run = await runPi(piArgs(luna, lunaThinking, lunaPrompt(task)), work, env, logPath);
-  if (run.code === 75) stopForHold(planRel, runDir, `${task.id} exited 75`);
+  const run = await runPiWithContinuation(luna, lunaThinking, lunaPrompt(task), work, env, logPath,
+    path.join(taskDir, "session"), () => stopForHold(planRel, runDir, `${task.id} exited 75`));
 
   const stats = inferenceStats(dbPath);
   if (!pinChecked) {
@@ -466,7 +492,7 @@ for (const task of ordered) {
   }
 
   restoreProtected(work, commit, protectedList);
-  const graded = runNodeTest(work, [task.acceptanceTest]);
+  const graded = runTests(work, [task.acceptanceTest], pythonProject);
   const stagedPreview = (() => {
     git(work, ["add", "-A"]);
     return git(work, ["diff", "--cached"]);
@@ -514,9 +540,11 @@ if (!(resume && fs.existsSync(integrationMarker))) {
   const dbPath = path.join(runDir, "integration-telemetry.db");
   const env = { ...process.env, PI_BUILD_TELEMETRY_DB: dbPath };
   delete env.PI_OFFLINE;
-  const prompt = solPrompt(planRel, resultsFile, specTests);
-  const run = await runPi(piArgs(sol, solThinking, prompt), work, env, logPath);
-  if (run.code === 75) stopForHold(planRel, runDir, "integration exited 75");
+  const tests = [specTests, ...plan.tasks.map((task) => task.acceptanceTest).filter(Boolean)];
+  const commands = testCommands(collectTestFiles(work, tests), { pythonProject });
+  const prompt = solPrompt(planRel, resultsFile, commands, path.join(runDir, "report.md"), plan.spec);
+  const run = await runPiWithContinuation(sol, solThinking, prompt, work, env, logPath,
+    path.join(runDir, "integration-session"), () => stopForHold(planRel, runDir, "integration exited 75"));
   commitAll(work, "plan: integration");
   const names = git(work, ["diff", "--name-only", before, "HEAD"])
     .split("\n")
@@ -558,9 +586,9 @@ if (fs.existsSync(path.join(work, "tsconfig.json"))) {
     typecheck = { code: err.status ?? 1, out: `${err.stdout || ""}${err.stderr || ""}` };
   }
 }
-const specResult = runNodeTest(work, fs.existsSync(path.join(work, specTests)) ? [specTests] : []);
+const specResult = runTests(work, fs.existsSync(path.join(work, specTests)) ? [specTests] : [], pythonProject);
 const planTests = plan.tasks.map((task) => task.acceptanceTest).filter(Boolean);
-const planResult = runNodeTest(work, planTests);
+const planResult = runTests(work, planTests, pythonProject);
 const grade = {
   commit,
   typecheck,

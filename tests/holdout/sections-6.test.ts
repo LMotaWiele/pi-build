@@ -84,26 +84,19 @@ test("§6.1 a bound with written files re-dispatches the checkpoint before abort
   assert.deepEqual(empty, ["abort"]);
 });
 
-test("§6.2 token and cost budgets fire before the loop-depth backstop", { skip: replayOnly }, async () => {
+test("§6.2 token and cost budgets remain backstops", { skip: replayOnly }, async () => {
   const { DEFAULT_BOUNDS, boundReason } = await import("../../lib/telemetry.ts");
-  assert.equal(DEFAULT_BOUNDS.maxLoopDepth, 60);
   assert.ok(DEFAULT_BOUNDS.maxTurnPromptTokens > 0);
   assert.ok(DEFAULT_BOUNDS.maxTurnCostUsd > 0);
   const config = {
     ...DEFAULT_BOUNDS,
     maxTurnPromptTokens: 1000,
     maxTurnCostUsd: 1,
-    maxLoopDepth: 60,
-    maxTurnWallClockMs: 600_000,
   };
-  const overTokens = boundReason(snap({ promptTokens: 123456, loopIndex: 80, costUsd: 0 }), config);
+  const overTokens = boundReason(snap({ promptTokens: 123456, costUsd: 0 }), config);
   assert.match(overTokens ?? "", /123456/);
-  assert.doesNotMatch(overTokens ?? "", /max loop depth/);
-  const overCost = boundReason(snap({ promptTokens: 0, costUsd: 7.25, loopIndex: 80 }), config);
+  const overCost = boundReason(snap({ promptTokens: 0, costUsd: 7.25 }), config);
   assert.match(overCost ?? "", /7\.25/);
-  assert.doesNotMatch(overCost ?? "", /max loop depth/);
-  const overLoop = boundReason(snap({ promptTokens: 0, costUsd: 0, loopIndex: 60 }), config);
-  assert.match(overLoop ?? "", /max loop depth/);
   assert.equal(boundReason(snap({ promptTokens: 0, costUsd: 0, loopIndex: 1 }), config), null);
 });
 

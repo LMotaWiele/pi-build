@@ -1110,24 +1110,13 @@ export function selectTier(answers: TierAnswers): "work" | "escalate" {
 }
 
 export interface BoundConfig {
-  maxLoopDepth: number;
-  maxTurnWallClockMs: number;
-  maxConsecutiveToolFailures: number;
-  noProgressReads: number;
   maxTurnPromptTokens: number;
   maxTurnCostUsd: number;
 }
 
 export const DEFAULT_BOUNDS: BoundConfig = {
-  maxLoopDepth: 60,
-  maxTurnWallClockMs: 600_000,
-  maxConsecutiveToolFailures: 3,
-  noProgressReads: 6,
-  // Baseline turn: 9.27M prompt tokens and $5.08 provider across 60 rounds, stopped mid-spec.
-  // A budget at that line would have stopped the same turn earlier. Twice that leaves room
-  // for the three sections; loop depth stays the backstop.
-  maxTurnPromptTokens: 20_000_000,
-  maxTurnCostUsd: 12,
+  maxTurnPromptTokens: 50_000_000,
+  maxTurnCostUsd: 30,
 };
 
 export function boundReason(snapshot: BoundSnapshot, config: BoundConfig = DEFAULT_BOUNDS): string | null {
@@ -1138,18 +1127,6 @@ export function boundReason(snapshot: BoundSnapshot, config: BoundConfig = DEFAU
   }
   if (costUsd >= config.maxTurnCostUsd) {
     return `max turn cost ${costUsd} >= ${config.maxTurnCostUsd}`;
-  }
-  if (snapshot.loopIndex >= config.maxLoopDepth) {
-    return `max loop depth ${config.maxLoopDepth} (loop_index ${snapshot.loopIndex})`;
-  }
-  if (snapshot.elapsedMs >= config.maxTurnWallClockMs) {
-    return `wall clock ${snapshot.elapsedMs}ms >= ${config.maxTurnWallClockMs}ms`;
-  }
-  if (snapshot.consecutiveFailures >= config.maxConsecutiveToolFailures) {
-    return `consecutive tool failures ${snapshot.consecutiveFailures}`;
-  }
-  if (snapshot.reads >= config.noProgressReads && snapshot.edits === 0) {
-    return `no progress: ${snapshot.reads} reads and 0 edits`;
   }
   return null;
 }

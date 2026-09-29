@@ -4,7 +4,7 @@
 **Acceptance tests:** `docs/SPEC-spec-translation.tests/` — may not be edited by the implementer.
 **Reference implementation:** `docs/SPEC-spec-translation.reference/` — copy into place; passes the tests as delivered.
 
-**Status:** open
+**Status:** implemented
 **Executor:** Grok Build
 **Written:** 2026-09-27
 **Relation to other specs:** `docs/SPEC-production-config.md` §3 (specs ship tests) stands and this spec depends on it. Its §1 and §4 are superseded here. Its §2 and §5 are unchanged and not required by this spec. `docs/SPEC-routing-orchestration.md` is closed; no further suite runs.
@@ -820,3 +820,7 @@ console.log("Hold cleared.");
 #!/usr/bin/env bash
 exec node --experimental-strip-types --no-warnings "$(dirname "$0")/../scripts/pi-continue.ts" "$@"
 ```
+
+## Landing
+
+Steps 0–2 implemented. Step 3 withdrawn by Lucas on 2026-09-29 in favour of using both harnesses in production.

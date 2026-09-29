@@ -71,12 +71,8 @@
   },
   "bounds": {
     "enabled": true,
-    "maxLoopDepth": 60,
-    "maxTurnWallClockMs": 1800000,
-    "maxConsecutiveToolFailures": 3,
-    "noProgressReads": 6,
-    "maxTurnPromptTokens": 20000000,
-    "maxTurnCostUsd": 12
+    "maxTurnPromptTokens": 50000000,
+    "maxTurnCostUsd": 30
   },
   "quotaGate": {
     "fiveHour": 95,

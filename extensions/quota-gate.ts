@@ -25,14 +25,14 @@
 //     headless hold uses process.exit(75).
 //
 // Behaviour:
-//   session_start          poll /backend-api/wham/usage once; if a hold file exists, surface it
-//   after_provider_response update usage from x-codex-*-used-percent headers; set a soft hold on threshold
-//   message_end (assistant) at each round boundary: if held, ask (interactive) or stop (headless)
-//   before_agent_start     if held, ask (interactive) or exit 75 before any inference (headless)
-//   agent_end              a 429 usage-limit error sets a hard hold
+//   session_start          poll /backend-api/wham/usage once; pause or resolve a hold
+//   after_provider_response update usage from x-codex-*-used-percent headers
+//   message_end (assistant) pause a 5h window or resolve a weekly hold
+//   before_agent_start     pause or resolve before any inference
+//   agent_end              a 429 usage-limit error polls, pauses and resumes, or holds
 //
 // Headless runs exit with code 75 (EX_TEMPFAIL) while held. bin/pi-continue
-// clears a hold from outside pi. No hold is ever lifted automatically.
+// clears a weekly hold from outside pi. A 5h pause resumes automatically.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -46,10 +46,11 @@ import {
   accountIdFromToken,
   isUsageLimitError,
   parseCodexHeaders,
+  quotaAction,
+  PAUSE_MARGIN_SEC,
   readHold,
   readOverrides,
   resolveThresholds,
-  shouldHold,
   writeHold,
   writeOverrides,
   type Hold,
@@ -116,6 +117,7 @@ export default function quotaGate(pi: ExtensionAPI) {
   let windows: QuotaWindow[] = [];
   let lastProviderStatus: number | undefined;
   let requestFooterRender: (() => void) | null = null;
+  let pendingPause: Promise<void> | null = null;
 
   function refreshFooter(): void {
     requestFooterRender?.();
@@ -280,13 +282,50 @@ export default function quotaGate(pi: ExtensionAPI) {
     return `${hold.hard ? "Provider refused" : "Threshold reached"}: ${hold.reason}. ${parts.join(", ")}`;
   }
 
-  function setSoftHoldIfNeeded(): void {
+  function setHold(reason: Hold["reason"], hard = false): void {
     if (readHold(holdPath)) return;
-    const d = shouldHold(windows, thresholds, readOverrides(overridePath));
-    if (!d.hold) return;
-    const hold: Hold = { reason: d.reason!, hard: false, setAt: new Date().toISOString(), windows };
+    const hold: Hold = { reason, hard, setAt: new Date().toISOString(), windows };
     writeHold(holdPath, hold);
     record("hold", hold);
+  }
+
+  async function sleepUntil(untilSec: number): Promise<void> {
+    while (Date.now() < untilSec * 1000) {
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(untilSec * 1000 - Date.now(), 2_147_483_647)));
+    }
+  }
+
+  async function pause(ctx: Ctx, untilSec: number): Promise<void> {
+    if (pendingPause) return pendingPause;
+    pendingPause = (async () => {
+      notify(ctx, `5h quota paused until ${new Date(untilSec * 1000).toLocaleString()}.`);
+      record("pause", { untilSec });
+      await sleepUntil(untilSec);
+      await poll(ctx);
+    })();
+    try {
+      await pendingPause;
+    } finally {
+      pendingPause = null;
+    }
+  }
+
+  // Called at round boundaries, not from response headers: a running round
+  // finishes before its quota decision is applied.
+  async function atBoundary(ctx: Ctx): Promise<boolean> {
+    const existing = readHold(holdPath);
+    if (existing?.reason === "5h" && !existing.hard) clearHold(holdPath); // legacy soft hold
+    else if (existing) return resolveHold(ctx);
+    if (!isCodex(ctx)) return true;
+    for (;;) {
+      const action = quotaAction(windows, thresholds, readOverrides(overridePath));
+      if (action.action === "continue") return true;
+      if (action.action === "hold") {
+        setHold(action.reason);
+        return resolveHold(ctx);
+      }
+      await pause(ctx, action.untilSec);
+    }
   }
 
   // Returns true when work may continue.
@@ -329,9 +368,7 @@ export default function quotaGate(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx: Ctx) => {
     installFooter(ctx);
     if (isCodex(ctx)) await poll(ctx);
-    setSoftHoldIfNeeded();
-    const hold = readHold(holdPath);
-    if (hold) notify(ctx, `${describe(hold)} Work is on hold until you confirm.`);
+    if (!(await atBoundary(ctx))) stopHeadless(ctx);
   });
 
   pi.on("after_provider_response", (event, ctx: Ctx) => {
@@ -353,30 +390,41 @@ export default function quotaGate(pi: ExtensionAPI) {
       windows = applyHeaderUsage(windows, usage);
     }
     refreshFooter();
-    setSoftHoldIfNeeded();
   });
 
   pi.on("message_end", async (event, ctx: Ctx) => {
     if (event?.message?.role !== "assistant") return;
-    if (!readHold(holdPath)) return;
-    if (!(await resolveHold(ctx))) stopHeadless(ctx);
+    if (!(await atBoundary(ctx))) stopHeadless(ctx);
   });
 
   pi.on("before_agent_start", async (_event, ctx: Ctx) => {
-    if (await resolveHold(ctx)) return;
-    stopHeadless(ctx);
+    if (!(await atBoundary(ctx))) stopHeadless(ctx);
   });
 
-  pi.on("agent_end", (event, ctx: Ctx) => {
+  pi.on("agent_end", async (event, ctx: Ctx) => {
     const err = lastError(event);
     if (!err || !isUsageLimitError(err)) {
       if (!hasUI(ctx) && readHold(holdPath)) process.exit(HOLD_EXIT_CODE);
       return;
     }
-    const hold: Hold = { reason: "usage_limit", hard: true, setAt: new Date().toISOString(), windows };
-    writeHold(holdPath, hold);
-    record("hold", hold);
-    notify(ctx, `${describe(hold)} Work is on hold until you confirm.`);
+    const fresh = isCodex(ctx) ? await poll(ctx) : null;
+    const action = fresh ? quotaAction(windows, thresholds, readOverrides(overridePath)) : null;
+    if (action?.action === "pause" || action?.action === "continue") {
+      await pause(ctx, action.action === "pause" ? action.untilSec : Math.ceil(Date.now() / 1000 + PAUSE_MARGIN_SEC));
+      if (!(await atBoundary(ctx))) {
+        stopHeadless(ctx);
+        return;
+      }
+      if (ctx.mode === "print") {
+        pi.appendEntry("pi-build-continue-needed", { reason: "usage_limit", at: new Date().toISOString() });
+      } else {
+        pi.sendUserMessage("continue");
+      }
+      return;
+    }
+    setHold(action?.action === "hold" ? action.reason : "usage_limit", action?.action !== "hold");
+    const hold = readHold(holdPath);
+    if (hold) notify(ctx, `${describe(hold)} Work is on hold until you confirm.`);
     if (!hasUI(ctx)) process.exit(HOLD_EXIT_CODE);
   });
 }

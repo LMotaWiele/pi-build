@@ -1,0 +1,175 @@
+#!/usr/bin/env -S node --experimental-strip-types
+// Turn a checked-in spec into a review branch; never mutate the caller's branch.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
+import { countVerifyChecks, pipelineThinking, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { preflight, testCommands } from "../lib/pipeline.ts";
+import { resolveSpec, specPaths } from "../lib/specs.ts";
+import { defaultHoldPath, readHold } from "../lib/quota.ts";
+import { readPiSettings } from "../lib/telemetry.ts";
+
+const root = path.resolve(import.meta.dirname, "..");
+const specsDir = path.join(root, "docs/specs");
+const argv = process.argv.slice(2);
+const query = argv.find((arg) => !arg.startsWith("--"));
+const flags = new Set(argv.filter((arg) => arg.startsWith("--")));
+const exit = (text, code = 1) => { console.error(text); process.exit(code); };
+const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
+const read = (file) => fs.readFileSync(file, "utf8");
+const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+const filesIn = (dir, prefix = "") => fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  const rel = path.join(prefix, entry.name);
+  return entry.isDirectory() ? filesIn(path.join(dir, entry.name), rel) : [rel];
+}) : [];
+const run = (cmd, args, cwd, opts = {}) => {
+  const result = spawnSync(cmd, args, { cwd, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, ...opts });
+  return { code: result.status ?? 1, output: `${result.stdout || ""}${result.stderr || ""}` };
+};
+function tests(work, files, pythonProject) {
+  const cmds = testCommands(files, { pythonProject });
+  if (!cmds.length) return { code: 1, output: "no recognized test files" };
+  const results = cmds.map(({ cmd, args }) => run(cmd, args, work));
+  return { code: results.some((result) => result.code !== 0) ? 1 : 0, output: results.map((r) => r.output).join("\n") };
+}
+function usage(db) {
+  if (!fs.existsSync(db)) return { calls: 0, cost: 0 };
+  const store = new DatabaseSync(db, { readOnly: true });
+  try {
+    const row = store.prepare("SELECT COUNT(*) calls, COALESCE(SUM(cost_usd), 0) cost FROM inference_calls").get();
+    return { calls: row.calls, cost: row.cost };
+  } catch { return { calls: 0, cost: 0 }; }
+  finally { store.close(); }
+}
+function pi(work, model, thinking, prompt, log, db) {
+  const result = run("pi", ["--model", model, "--thinking", thinking, "--approve", "-p", prompt], work,
+    { env: { ...process.env, PI_BUILD_TELEMETRY_DB: db } });
+  write(log, result.output);
+  if (result.code === 75) exit(`Quota hold; resume with bin/pi-implement ${query} --resume`, 75);
+  return result;
+}
+function planPrompt(spec, planDir, checks) {
+  return `Read ${spec} and the repository. Write an implementation plan to ${planDir}/plan.json following the Plan interface in lib/plan.ts, and one acceptance test per Luna task in ${planDir}/.\n\n` +
+    `Map each verification V-number, 1 through ${checks}, to verifyMap key without the V (V3 is key "3"). Order tasks by the spec's stages. List every requirement and map every V-number to requirement ids or "process". Split tasks into one file each; assign to Luna only tasks needing no cross-file reasoning or open design decision; assign the rest to Sol. Each Luna brief must stand alone, with exact interfaces, constants, reading and forbidden edits. Tests import only declared interfaces and assert behaviour. Run validatePlan and undeclaredImports, confirm every acceptance test fails before implementation. Do not implement anything.`;
+}
+if (!query || [...flags].some((flag) => !["--dry-run", "--plan-only", "--resume"].includes(flag)))
+  exit("usage: bin/pi-implement <spec> [--dry-run] [--plan-only] [--resume]", 2);
+const resolution = resolveSpec(fs.readdirSync(specsDir), query);
+if (!resolution.ok) exit(resolution.error, 2);
+const spec = resolution.spec;
+const paths = specPaths(spec);
+const specRel = path.join("docs/specs", paths.spec);
+const testRel = path.join("docs/specs", paths.tests);
+const planRel = path.join("docs/specs", paths.plan);
+const dirty = git(root, "status", "--porcelain").split("\n").filter(Boolean);
+const check = preflight({ specText: read(path.join(root, specRel)), hasTestsDir: fs.existsSync(path.join(root, testRel)),
+  held: readHold(defaultHoldPath(process.env)) !== null, dirty });
+for (const warning of check.warnings) console.error(`warning: ${warning}`);
+if (check.blocking.length) exit(check.blocking.join("\n"), check.blocking.some((s) => s.includes("quota hold")) ? 75 : 2);
+const settings = readPiSettings();
+const planner = settings.routing?.tiers?.escalate || "openai-codex/gpt-6-sol";
+const editor = settings.routing?.tiers?.scout || "openai-codex/gpt-6-luna";
+const levels = pipelineThinking(settings);
+const pythonProject = settings.pipeline?.pythonProject || "tools/map";
+const commands = testCommands(filesIn(path.join(root, testRel), testRel), { pythonProject });
+if (flags.has("--dry-run")) {
+  console.log(JSON.stringify({ spec: specRel, tests: testRel, plan: planRel, runRecord: paths.runRecord,
+    checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands }, null, 2));
+  process.exit(0);
+}
+const base = path.join(os.homedir(), "var/pipeline-runs", `SPEC-${spec.id}-${spec.slug}`);
+const existing = fs.existsSync(base) ? fs.readdirSync(base).sort().reverse().find((s) => fs.existsSync(path.join(base, s, "pipeline.json"))) : undefined;
+if (flags.has("--resume") && !existing) exit(`no run to resume for SPEC-${spec.id}`, 2);
+const stamp = flags.has("--resume") ? existing : new Date().toISOString().replace(/[:.]/g, "-");
+const dir = path.join(base, stamp);
+const metaPath = path.join(dir, "pipeline.json");
+const branch = flags.has("--resume") ? JSON.parse(read(metaPath)).branch : `pipeline/SPEC-${spec.id}-${spec.slug}-${stamp}`;
+const work = path.join(dir, "branch");
+if (!flags.has("--resume")) {
+  fs.mkdirSync(dir, { recursive: true });
+  git(root, "branch", branch, "HEAD");
+  git(root, "worktree", "add", work, branch);
+  write(metaPath, JSON.stringify({ branch, spec: specRel, stamp, startedAt: new Date().toISOString() }, null, 2));
+}
+const workPlan = path.join(work, planRel, "plan.json");
+const specTests = filesIn(path.join(work, testRel), testRel);
+if (!fs.existsSync(workPlan)) {
+  const created = pi(work, planner, levels.planner, planPrompt(specRel, planRel, check.checks),
+    path.join(dir, "planner.log"), path.join(dir, "planner.db"));
+  if (created.code !== 0) exit(`planning failed: ${created.output}`);
+}
+let gate = "";
+for (let repair = 0; repair <= 2; repair++) {
+  const errors = [];
+  let plan;
+  try {
+    if (countVerifyChecks(read(path.join(work, specRel))) !== check.checks) errors.push("verification count changed");
+    plan = JSON.parse(read(workPlan));
+    if (plan.spec !== specRel) errors.push(`plan.spec must be ${specRel}`);
+    const checked = validatePlan(plan, check.checks);
+    errors.push(...checked.errors);
+    for (const testFile of filesIn(path.join(work, planRel), planRel).filter((file) => /\.test\.(ts|mts|js|mjs)$|(?:^|\/)test_[^/]*\.py$/.test(file))) {
+      const owner = plan.tasks.find((task) => task.acceptanceTest === testFile);
+      const declared = owner?.interfaces || plan.tasks.flatMap((task) => task.interfaces || []);
+      const missing = undeclaredImports(read(path.join(work, testFile)), declared);
+      if (missing.length) errors.push(`${testFile}: undeclaredImports ${missing.join(", ")}`);
+    }
+    for (const task of plan.tasks) {
+      if (task.assignee !== "luna") continue;
+      const file = path.join(work, task.acceptanceTest || "");
+      if (!task.acceptanceTest || !fs.existsSync(file)) { errors.push(`${task.id}: missing acceptance test`); continue; }
+      const undeclared = undeclaredImports(read(file), task.interfaces || []);
+      if (undeclared.length) errors.push(`${task.id}: undeclaredImports ${undeclared.join(", ")}`);
+      const result = tests(work, [task.acceptanceTest], pythonProject);
+      if (result.code === 0) errors.push(`${task.id}: acceptance test already passes`);
+      if (/no recognized test files/.test(result.output)) errors.push(`${task.id}: ${result.output}`);
+    }
+  } catch (err) { errors.push(String(err)); }
+  if (!errors.length) { gate = "pass"; break; }
+  gate = errors.join("\n");
+  write(path.join(dir, `gate-${repair}.log`), gate);
+  if (repair === 2) exit(`plan gate failed after two repairs:\n${gate}`);
+  const fixed = pi(work, planner, levels.planner, `Repair the plan and its acceptance tests only. Gate errors:\n${gate}\nDo not implement tasks.`,
+    path.join(dir, `repair-${repair + 1}.log`), path.join(dir, `repair-${repair + 1}.db`));
+  if (fixed.code !== 0) exit(`plan repair failed: ${fixed.output}`);
+}
+git(work, "add", "--", planRel);
+if (git(work, "diff", "--cached", "--name-only")) git(work, "commit", "-m", `plan: SPEC-${spec.id}`);
+write(path.join(dir, "gate.json"), JSON.stringify({ result: gate, checks: check.checks }, null, 2));
+if (flags.has("--plan-only")) { console.log(`${branch} ${workPlan}: plan gate passed`); process.exit(0); }
+const runner = run(process.execPath, ["--experimental-strip-types", path.join(work, "scripts/run-plan.mjs"),
+  "--plan", workPlan, "--run-dir", dir, ...(flags.has("--resume") ? ["--resume"] : [])], work);
+write(path.join(dir, "runner.log"), runner.output);
+if (runner.code === 75) exit(`quota hold: bin/pi-implement ${query} --resume`, 75);
+if (runner.code !== 0) exit(`runner failed (${runner.code}): ${runner.output}`);
+const nested = path.join(dir, "work");
+const gradePath = path.join(dir, "grade.json");
+const grade = JSON.parse(read(gradePath));
+if (grade.specTests.code !== 0 || grade.planTests.code !== 0 || grade.typecheck.code > 0) {
+  exit(`final grade failed; worktree retained at ${nested}: ${JSON.stringify(grade)}`);
+}
+const resultRows = fs.existsSync(path.join(dir, "results.jsonl")) ? read(path.join(dir, "results.jsonl")).trim().split("\n").filter(Boolean).map(JSON.parse) : [];
+const protectedDiff = fs.existsSync(path.join(dir, "protected-edits.diff")) ? read(path.join(dir, "protected-edits.diff")) : "";
+// The runner commits in its detached worktree. Fast-forward only our review branch.
+const finished = git(nested, "rev-parse", "HEAD");
+git(work, "merge", "--ff-only", finished);
+const report = path.join(dir, "report.md");
+if (!fs.existsSync(report)) exit(`integration did not write ${report}`);
+const branchReport = path.join(work, planRel, "report.md");
+write(branchReport, read(report));
+const runRecord = path.join(work, "docs/specs", paths.runRecord);
+const costs = resultRows.reduce((total, row) => total + (row.providerCost || 0), 0);
+const record = `# SPEC-${spec.id} run\n\nImplemented by: pi pipeline\n\nBranch: ${branch}\nPlan: ${planRel}; gate: ${gate}; checks: ${check.checks}\n\n` +
+  `## Tasks\n${resultRows.map((row) => `- ${row.id}: ${row.acceptance}; model ${row.model}; rounds ${row.rounds}; cost $${row.providerCost}`).join("\n")}\n\n` +
+  `## Final grade\n\n\`\`\`json\n${JSON.stringify(grade, null, 2)}\n\`\`\`\n\n` +
+  `## Runtime\nStuck findings, escalations and pauses: see task session logs and telemetry in ${dir}.\n` +
+  `Provider task cost: $${costs}; planner: ${JSON.stringify(usage(path.join(dir, "planner.db")))}. Quota deltas: see usage snapshots in telemetry.\n\n` +
+  `## Protected files diff\n\n\`\`\`diff\n${protectedDiff}\n\`\`\`\n\n## Report\n${read(report)}\n`;
+write(runRecord, record);
+git(work, "add", "--", path.relative(work, runRecord), path.relative(work, branchReport));
+git(work, "commit", "-m", `pipeline: record SPEC-${spec.id} run`);
+git(root, "worktree", "remove", "--force", nested);
+git(root, "worktree", "remove", "--force", work);
+console.log(`${branch} ${paths.runRecord} — spec ${grade.specTests.code === 0 ? "pass" : "fail"}, plan ${grade.planTests.code === 0 ? "pass" : "fail"}`);

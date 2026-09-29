@@ -15,7 +15,7 @@ memory-gate skips `pi_build_memory` while recap is enabled. One key, one owner.
 
 `before_agent_start`, measured on the stage 4b parent turn:
 
-1. bounds clears a fired bound when the prompt changes. It writes no section. That row is stored before the turn id exists.
+1. bounds resets per-turn stuck history when the turn changes. It writes no section. That row is stored before the turn id exists.
 2. memory-gate writes `pi_build_tools`.
 3. plan-mode writes no section while plan mode is off.
 4. read-guard resets dedupe for a new prompt. It writes no section.
@@ -24,7 +24,7 @@ memory-gate skips `pi_build_memory` while recap is enabled. One key, one owner.
 
 `context`: plan-mode drops stale plan-mode messages while plan mode is off. It is the only context rewriter.
 
-`tool_result`: bounds checks the turn, explain records edits, post-edit-typecheck schedules `tsc`, and read-guard may replace a repeated read with a pointer or a diff. read-guard is the only tool-result rewriter. A deduped read stays a pointer.
+`tool_result`: bounds owns stuck detection (nudge, then retry-ladder escalation) and budget stops; explain records edits, post-edit-typecheck schedules `tsc`, and read-guard may replace a repeated read with a pointer or a diff. read-guard is the only tool-result rewriter. A deduped read stays a pointer. Bounds also owns overflow-compaction auto-continue at `agent_end`; print mode records `pi-build-continue-needed` instead.
 
 No second context rewriter is stacked on either seam.
 
@@ -32,13 +32,12 @@ No second context rewriter is stacked on either seam.
 
 `extensions/quota-gate.ts` writes no section key, so it is outside the invalidation count above. `lib/quota.ts` makes the decisions. The extension's events, in order:
 
-1. `session_start` polls `GET /backend-api/wham/usage` when `ctx.model.provider` is `openai-codex`, then writes a soft hold if a window is already over its threshold.
-2. `after_provider_response` reads `status` and `headers` (`x-codex-primary-used-percent`, `x-codex-secondary-used-percent`) and may write a soft hold.
-3. `message_end`, for an assistant message, asks when a hold file exists. Print mode has no UI, so the process exits 75.
-4. `before_agent_start` does that check before the first inference.
-5. `agent_end` writes a hard hold when the last assistant `errorMessage` and the preceding response status are a 429 usage limit. `agent_end` itself has no error object.
+1. `session_start` polls `GET /backend-api/wham/usage` for Codex and evaluates the windows.
+2. `after_provider_response` updates window percentages from headers.
+3. `message_end` and `before_agent_start` pause a 5-hour window until reset plus five minutes, or hold on the weekly limit (headless exit 75).
+4. `agent_end` polls after a 429 usage-limit error, pauses and resumes for 5-hour exhaustion, or holds for weekly exhaustion. Print mode records `pi-build-continue-needed` instead of sending a message it cannot process.
 
-The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`). `extensions/bounds.ts` runs its escalate retry only when that file is absent and `PI_BUILD_RETRY` is not `0`. `bin/pi-continue` is the only way to clear a hold. Thresholds come from the `quotaGate` settings block through `readPiSettings()`, the same loader bounds uses. `PI_BUILD_QUOTA_5H` and `PI_BUILD_QUOTA_WEEKLY` override the block.
+The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`). Bounds escalates stuck work only when that file is absent and `PI_BUILD_RETRY` is not `0`; budgets never retry. `bin/pi-continue` clears weekly holds. Thresholds come from `quotaGate` settings via `readPiSettings()`; `PI_BUILD_QUOTA_5H` and `PI_BUILD_QUOTA_WEEKLY` override them.
 
 ## Map
 

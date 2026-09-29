@@ -8,7 +8,7 @@ import { clearHold, writeHold } from "../lib/quota.ts";
 import {
   beginUserTurn,
   boundReason,
-  bumpLoopIndex,
+  recordInference,
   DEFAULT_BOUNDS,
   noteWrittenFile,
   resetTelemetryForTests,
@@ -59,12 +59,8 @@ function workspace(): { dir: string; settings: string } {
       },
       bounds: {
         enabled: true,
-        maxLoopDepth: 1,
-        maxTurnWallClockMs: 60_000_000,
-        maxConsecutiveToolFailures: 3,
-        noProgressReads: 6,
-        maxTurnPromptTokens: 20_000_000,
-        maxTurnCostUsd: 12,
+        maxTurnPromptTokens: 50_000_000,
+        maxTurnCostUsd: 30,
       },
     }),
   );
@@ -120,7 +116,16 @@ function withSettings(settings: string, fn: () => Promise<void>): Promise<void> 
   });
 }
 
-test("token and cost budgets fire before the loop-depth backstop", () => {
+async function repeatToolResult(pi: ReturnType<typeof fakePi>, ctx: Record<string, unknown>, count = 5) {
+  for (let i = 0; i < count; i++) {
+    await pi.emit("tool_result", {
+      toolName: "read", input: { path: "src/repeated.ts" },
+      content: [{ type: "text", text: "same result" }], isError: false,
+    }, ctx);
+  }
+}
+
+test("token and cost budgets are the only bound reasons", () => {
   const base = {
     sessionId: "s",
     turnId: "t",
@@ -134,7 +139,31 @@ test("token and cost budgets fire before the loop-depth backstop", () => {
   };
   assert.match(boundReason({ ...base, promptTokens: DEFAULT_BOUNDS.maxTurnPromptTokens }) ?? "", /prompt tokens/);
   assert.match(boundReason({ ...base, costUsd: DEFAULT_BOUNDS.maxTurnCostUsd }) ?? "", /turn cost/);
-  assert.match(boundReason({ ...base, loopIndex: 60, promptTokens: 1, costUsd: 1 }) ?? "", /loop depth/);
+  assert.equal(boundReason({ ...base, loopIndex: 60, elapsedMs: 60_000_000, consecutiveFailures: 3, reads: 6 }), null);
+});
+
+test("a budget bound checkpoints written files and stops without retry", async () => {
+  const { dir, settings } = workspace();
+  await withSettings(settings, async () => {
+    const bounds = fakePi();
+    await boundsExtension(bounds as never);
+    beginUserTurn("sess", "budget prompt");
+    noteWrittenFile("src/budget.ts");
+    recordInference({ tier: "work", model: "gpt-6-luna", promptTokens: DEFAULT_BOUNDS.maxTurnPromptTokens });
+    let aborted = false;
+    await bounds.emit("message_end", {}, {
+      abort() { aborted = true; },
+      cwd: dir,
+      sessionManager: { getSessionId: () => "sess" },
+      model: { provider: "openai-codex", id: "gpt-6-luna" },
+      thinkingLevel: "medium",
+      modelRegistry: registry(),
+    });
+    assert.equal(aborted, true);
+    assert.equal(bounds.modelSet, false);
+    assert.equal(bounds.sent, "");
+    assert.match(fs.readFileSync(path.join(dir, ".agent/notes/INDEX.md"), "utf8"), /bounded at max turn prompt tokens.*src\/budget\.ts/);
+  });
 });
 
 test("disabling routing leaves the bounds running", async () => {
@@ -145,9 +174,8 @@ test("disabling routing leaves the bounds running", async () => {
     assert.ok((bounds.handlers.get("message_end") ?? []).length > 0);
 
     beginUserTurn("sess", "original prompt");
-    bumpLoopIndex();
     let aborted = false;
-    await bounds.emit("message_end", {}, {
+    await repeatToolResult(bounds, {
       abort() {
         aborted = true;
       },
@@ -167,7 +195,6 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
     await boundsExtension(bounds as never);
     beginUserTurn("sess", "original prompt");
     noteWrittenFile("src/a.ts");
-    bumpLoopIndex();
     const model = { provider: "openai-codex", id: "gpt-6-luna" };
     const sol = { provider: "openai-codex", id: "gpt-6-sol" };
     let aborted = false;
@@ -184,7 +211,7 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
         find: (provider: string, id: string) => [model, sol].find((candidate) => candidate.provider === provider && candidate.id === id),
       },
     };
-    await bounds.emit("message_end", {}, ctx);
+    await repeatToolResult(bounds, ctx);
     assert.equal(aborted, true);
     assert.equal(bounds.modelSet, true);
     assert.deepEqual(bounds.model, sol);
@@ -196,9 +223,8 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
     bounds.sent = "";
     beginUserTurn("sess", first);
     noteWrittenFile("src/b.ts");
-    bumpLoopIndex();
     await bounds.emit("before_agent_start", { prompt: first, systemPromptOptions: { sections: {} } }, ctx);
-    await bounds.emit("message_end", {}, ctx);
+    await repeatToolResult(bounds, ctx);
     assert.equal(bounds.sent, "");
   });
 });
@@ -224,7 +250,6 @@ test("a bound does not retry while a quota hold file exists", async () => {
       await boundsExtension(bounds as never);
       beginUserTurn("sess", "original prompt");
       noteWrittenFile("src/a.ts");
-      bumpLoopIndex();
       let aborted = false;
       const ctx = {
         abort() {
@@ -236,7 +261,7 @@ test("a bound does not retry while a quota hold file exists", async () => {
         thinkingLevel: "medium",
         modelRegistry: registry(),
       };
-      await bounds.emit("message_end", {}, ctx);
+      await repeatToolResult(bounds, ctx);
       assert.equal(aborted, true);
       assert.equal(bounds.modelSet, false);
       assert.equal(bounds.sent, "");
@@ -245,8 +270,7 @@ test("a bound does not retry while a quota hold file exists", async () => {
       await bounds.emit("before_agent_start", { prompt: "other", systemPromptOptions: { sections: {} } }, ctx);
       beginUserTurn("sess", "original prompt");
       noteWrittenFile("src/b.ts");
-      bumpLoopIndex();
-      await bounds.emit("message_end", {}, ctx);
+      await repeatToolResult(bounds, ctx);
       assert.equal(bounds.modelSet, true);
       assert.match(bounds.sent, /^bounded at /);
     });
@@ -264,8 +288,7 @@ test("a GPT-6 Sol turn at high thinking does not retry", async () => {
     await boundsExtension(bounds as never);
     beginUserTurn("sess", "original prompt");
     noteWrittenFile("src/a.ts");
-    bumpLoopIndex();
-    await bounds.emit("message_end", {}, {
+    await repeatToolResult(bounds, {
       abort() {},
       cwd: dir,
       sessionManager: { getSessionId: () => "sess" },
@@ -288,9 +311,8 @@ test("PI_BUILD_RETRY=0 skips the bounds retry", async () => {
       await boundsExtension(bounds as never);
       beginUserTurn("sess", "original prompt");
       noteWrittenFile("src/a.ts");
-      bumpLoopIndex();
       let aborted = false;
-      await bounds.emit("message_end", {}, {
+      await repeatToolResult(bounds, {
         abort() {
           aborted = true;
         },
