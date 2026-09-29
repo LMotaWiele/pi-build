@@ -1,6 +1,50 @@
 // lib/pipeline.ts — decisions the pipeline makes before and during a run.
 
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { countVerifyChecks } from "./plan.ts";
+
+export function childEnv(
+  base: Record<string, string | undefined>,
+  role: "planner" | "editor" | "integration",
+  telemetryDb: string,
+): Record<string, string | undefined> {
+  return {
+    ...base,
+    PI_BUILD_PIPELINE: "1",
+    PI_BUILD_SUBAGENT_ROLE: role,
+    PI_BUILD_TELEMETRY_DB: telemetryDb,
+  };
+}
+
+export function pipelineRunRoot(settings: unknown, home: string): string {
+  const pipeline = (settings as { pipeline?: { runRoot?: unknown } } | null)?.pipeline;
+  return typeof pipeline?.runRoot === "string" && pipeline.runRoot.length > 0
+    ? pipeline.runRoot
+    : join(home, "var/pipeline-runs");
+}
+
+export function pipelineTelemetryDbs(root: string): string[] {
+  const found: string[] = [];
+  function visit(dir: string): void {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && (entry.name === "telemetry.db" || entry.name.endsWith("-telemetry.db"))) {
+        if (statSync(path).isFile()) found.push(path);
+      }
+    }
+  }
+  visit(root);
+  return found.sort();
+}
 
 export interface Command {
   cmd: string;
