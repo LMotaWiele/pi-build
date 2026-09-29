@@ -2,3 +2,4 @@ node >=22.19.0
 jq
 git
 pi 0.87.0
+uv

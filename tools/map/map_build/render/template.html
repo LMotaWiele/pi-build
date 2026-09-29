@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0;
+  --surface-1: #fcfcfb;
+  --surface-2: #efeeea;
+  --border: #d8d6d0;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7973;
+  --accent: #2a78d6;
+  --zero: #e6e5e0;
+  --edge: #8d8b84;
+  --warn: #b26b00;
+  --error: #c62f2f;
+  --seq-0: #cde2fb; --seq-1: #9ec5f4; --seq-2: #6da7ec; --seq-3: #3987e5;
+  --seq-4: #256abf; --seq-5: #184f95; --seq-6: #0d366b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --surface-2: #252523;
+    --border: #3a3a37;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --accent: #3987e5;
+    --zero: #2c2c2a;
+    --edge: #8a8980;
+    --warn: #e0a030;
+    --error: #e66767;
+    --seq-0: #0d366b; --seq-1: #104281; --seq-2: #184f95; --seq-3: #256abf;
+    --seq-4: #3987e5; --seq-5: #6da7ec; --seq-6: #b7d3f6;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #252523; --border: #3a3a37;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --accent: #3987e5;
+  --zero: #2c2c2a; --edge: #8a8980; --warn: #e0a030; --error: #e66767;
+  --seq-0: #0d366b; --seq-1: #104281; --seq-2: #184f95; --seq-3: #256abf;
+  --seq-4: #3987e5; --seq-5: #6da7ec; --seq-6: #b7d3f6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--surface-0); color: var(--text-primary);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+header {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
+  padding: 10px 16px 6px; border-bottom: 1px solid var(--border); background: var(--surface-1);
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+header .fact { color: var(--text-secondary); }
+header .fact b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+button, select, input {
+  font: inherit; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
+}
+button { cursor: pointer; }
+button:hover { background: var(--surface-2); }
+button[aria-pressed="true"], button[aria-selected="true"] { background: var(--surface-2); border-color: var(--text-muted); font-weight: 600; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.linkish { border: none; background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+nav .spacer { flex: 1; }
+nav input[type="search"] { width: 220px; max-width: 100%; }
+.kbd { color: var(--text-muted); font-size: 11px; }
+main { flex: 1; display: flex; min-height: 0; }
+.tab { display: none; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
+.tab.active { display: flex; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 16px; color: var(--text-secondary); }
+.toolbar label { display: inline-flex; gap: 4px; align-items: center; }
+.stage { flex: 1; display: flex; min-height: 0; }
+.canvas { flex: 1; position: relative; min-width: 0; overflow: hidden; background: var(--surface-1); margin: 0 0 0 16px; border: 1px solid var(--border); border-radius: 8px; }
+.canvas svg { display: block; width: 100%; height: 100%; }
+.canvas.scroll { overflow: auto; }
+aside.panel {
+  width: 340px; max-width: 45vw; overflow: auto; padding: 12px 16px; margin: 0 16px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+}
+aside.panel h2 { font-size: 14px; margin: 0 0 6px; word-break: break-all; }
+aside.panel h3 { font-size: 12px; margin: 14px 0 4px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+aside.panel .empty { color: var(--text-muted); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 2px 6px 2px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-secondary); font-weight: 500; }
+td.num, th.num { text-align: right; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.legend { display: inline-flex; align-items: center; gap: 6px; }
+.legend .bar { width: 140px; height: 10px; border-radius: 3px; border: 1px solid var(--border); }
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 10; max-width: 360px;
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); display: none;
+}
+.tooltip .t { font-weight: 600; word-break: break-all; }
+.tooltip .s { color: var(--text-secondary); }
+svg text { fill: var(--text-primary); }
+svg .muted { fill: var(--text-secondary); }
+.tm-dir-label { font-size: 11px; fill: var(--text-secondary); font-weight: 600; }
+.tm-file-label { font-size: 10px; pointer-events: none; }
+.tm-file { stroke: var(--surface-1); stroke-width: 1; cursor: pointer; }
+.tm-file.hl { stroke: var(--text-primary); stroke-width: 3; }
+.tm-file.sel { stroke: var(--accent); stroke-width: 2.5; }
+.tm-dir { fill: none; stroke: var(--border); }
+.tm-fn { stroke: var(--surface-1); stroke-width: 1; }
+.cg-node rect { stroke: var(--text-muted); stroke-width: 1; }
+.cg-node.guard rect { stroke-dasharray: 5 3; stroke-width: 2; stroke: var(--text-secondary); }
+.cg-node text { font-size: 11px; }
+.cg-edge { fill: none; stroke: var(--edge); stroke-opacity: .7; }
+.cg-edge-label { font-size: 10px; fill: var(--text-secondary); }
+.timeline { display: flex; gap: 10px; padding: 12px; align-items: flex-start; min-width: min-content; }
+.loop { min-width: 180px; max-width: 240px; background: var(--surface-0); border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+.loop h4, .sub h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-secondary); }
+.ev { border: 1px solid var(--border); border-left-width: 4px; border-radius: 5px; padding: 3px 6px; margin: 0 0 4px; background: var(--surface-1); cursor: default; }
+.ev.model { border-left-color: var(--accent); }
+.ev.tool { border-left-color: var(--text-secondary); }
+.ev.guard { border-style: dashed; border-left-style: dashed; margin-left: 14px; }
+.ev .k { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ev .n { font-weight: 600; word-break: break-all; }
+.ev .d { color: var(--text-secondary); font-size: 11px; word-break: break-all; }
+.sub { border: 2px solid var(--text-muted); border-radius: 10px; padding: 8px; background: var(--surface-2); }
+.sub .timeline { padding: 0; }
+.erd-box rect.body { fill: var(--surface-1); stroke: var(--text-muted); }
+.erd-box rect.head { fill: var(--surface-2); }
+.erd-box text { font-size: 11px; }
+.erd-box .kind { font-size: 10px; fill: var(--text-muted); }
+.erd-box.match rect.body { stroke: var(--accent); stroke-width: 2; }
+.erd-rel { fill: none; stroke: var(--edge); stroke-width: 1.3; }
+.erd-rel.inferred { stroke-dasharray: 5 4; }
+.erd-rel-label { font-size: 10px; fill: var(--text-secondary); }
+.acc { fill: none; stroke: var(--edge); }
+.acc.read { stroke-width: 1.2; }
+.acc.write { stroke-width: 2.6; }
+.acc.subscribe { stroke-width: 1.4; stroke-dasharray: 2 3; }
+.acc.emit { stroke-width: 1.4; stroke-dasharray: 8 3; }
+.acc-label { font-size: 10px; fill: var(--text-secondary); }
+.acc-node rect { fill: var(--surface-2); stroke: var(--border); }
+.acc-node text { font-size: 11px; }
+dialog { background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; max-width: min(900px, 94vw); max-height: 80vh; }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+.sev-error { color: var(--error); font-weight: 600; }
+.sev-warning { color: var(--warn); font-weight: 600; }
+.note { color: var(--text-muted); padding: 24px; }
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .stage { flex-direction: column; }
+  .canvas { margin: 0 16px; min-height: 60vh; }
+  aside.panel { width: auto; max-width: none; margin: 12px 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="repo-name"></h1>
+  <span class="fact">built <b id="built"></b></span>
+  <span class="fact">highlighted turn <b id="hl-turn" class="mono"></b></span>
+  <span class="fact">window <b id="window"></b></span>
+  <span class="fact"><button class="linkish" id="diag-open" type="button"></button></span>
+</header>
+<nav>
+  <div role="tablist" aria-label="Views">
+    <button role="tab" id="tab-treemap" aria-selected="true" data-tab="treemap" type="button">1 · Treemap</button>
+    <button role="tab" id="tab-callgraph" aria-selected="false" data-tab="callgraph" type="button">2 · Call graph</button>
+    <button role="tab" id="tab-erd" aria-selected="false" data-tab="erd" type="button">3 · Data model</button>
+  </div>
+  <span class="spacer"></span>
+  <input type="search" id="filter" placeholder="Filter files or entities" aria-label="Filter">
+  <span class="kbd">1/2/3 tabs · / filter</span>
+</nav>
+<main>
+  <section class="tab active" id="view-treemap" role="tabpanel" aria-labelledby="tab-treemap">
+    <div class="toolbar">
+      <span>Color by</span>
+      <span id="tm-modes" role="group" aria-label="Color mode"></span>
+      <span class="legend" id="tm-legend"></span>
+      <label><input type="checkbox" id="tm-labels" checked> labels</label>
+    </div>
+    <div class="stage">
+      <div class="canvas" id="tm-canvas"></div>
+      <aside class="panel" id="tm-panel"><p class="empty">Click a file for its metrics, functions, turns, and entities. Highlighted files (thick outline) were edited in the highlighted turn.</p></aside>
+    </div>
+  </section>
+  <section class="tab" id="view-callgraph" role="tabpanel" aria-labelledby="tab-callgraph">
+    <div class="toolbar">
+      <label>Turn <select id="cg-turn"></select></label>
+      <span id="cg-totals"></span>
+    </div>
+    <div class="stage">
+      <div class="canvas" id="cg-canvas"></div>
+      <aside class="panel" id="cg-panel"><p class="empty">Aggregate over the window. Pick a turn for its timeline. Click a node for its numbers.</p></aside>
+    </div>
+  </section>
+  <section class="tab" id="view-erd" role="tabpanel" aria-labelledby="tab-erd">
+    <div class="toolbar">
+      <span role="group" aria-label="Data model mode">
+        <button type="button" id="erd-mode-entities" aria-pressed="true">Entities</button>
+        <button type="button" id="erd-mode-access" aria-pressed="false">Accesses</button>
+      </span>
+      <label><input type="checkbox" id="erd-modules"> modules and imports</label>
+      <label><input type="checkbox" id="erd-code" checked> code types</label>
+      <span id="erd-count"></span>
+      <span class="legend">solid: extracted · dashed: inferred</span>
+    </div>
+    <div class="stage">
+      <div class="canvas" id="erd-canvas"></div>
+      <aside class="panel" id="erd-panel"><p class="empty">Click an entity for its fields, relations, and the code that reads or writes it.</p></aside>
+    </div>
+  </section>
+</main>
+<div class="tooltip" id="tooltip" role="status"></div>
+<dialog id="diag-dialog"><h2 style="margin-top:0">Diagnostics</h2><div id="diag-body"></div><p><button type="button" id="diag-close">Close</button></p></dialog>
+{{DATA}}
+{{VENDOR}}
+{{APP}}
+</body>
+</html>

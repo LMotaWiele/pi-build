@@ -1,0 +1,8 @@
+{"traceEvents":[
+ {"ph":"X","name":"main","ts":0,"dur":1000,"pid":1,"tid":1,"cat":"FEE"},
+ {"ph":"X","name":"load","ts":10,"dur":300,"pid":1,"tid":1,"cat":"FEE"},
+ {"ph":"X","name":"parse","ts":20,"dur":100,"pid":1,"tid":1,"cat":"FEE"},
+ {"ph":"X","name":"save","ts":400,"dur":200,"pid":1,"tid":1,"cat":"FEE"},
+ {"ph":"X","name":"worker","ts":50,"dur":500,"pid":1,"tid":2,"cat":"FEE"},
+ {"ph":"i","name":"marker","ts":5,"pid":1,"tid":1}
+],"viztracer_metadata":{"version":"0.16"}}

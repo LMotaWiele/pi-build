@@ -1,0 +1,2 @@
+# Options the conformance harness passes to events().
+aliases = ["/fixture/repo"]

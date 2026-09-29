@@ -64,6 +64,10 @@ while IFS= read -r line || [ -n "$line" ]; do
       ;;
     jq) command -v jq >/dev/null || fail "jq missing"; ok "jq $(jq --version)" ;;
     git) command -v git >/dev/null || fail "git missing"; ok "git $(git --version)" ;;
+    uv)
+      # Optional: the map (extensions/map.ts, tools/map) stays off without it.
+      if command -v uv >/dev/null; then ok "uv $(uv --version)"; else echo "skipped: uv not installed"; fi
+      ;;
     pi)
       command -v pi >/dev/null || fail "pi missing"
       got="$(pi --version | head -n1 | tr -d '[:space:]')"
@@ -106,6 +110,13 @@ node --experimental-strip-types "$REPO/lib/hook-budget.ts" || fail "hook trace e
 
 (cd "$REPO" && node --experimental-strip-types --test tests/*.test.ts) || fail "unit tests"
 ok "unit tests"
+
+if command -v uv >/dev/null; then
+  uv run --project "$REPO/tools/map" pytest -q "$REPO/tools/map" || fail "map tests"
+  ok "map tests"
+else
+  echo "skipped: uv not installed"
+fi
 
 python3 - << 'PY'
 import subprocess, time

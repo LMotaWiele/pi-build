@@ -1,0 +1,30 @@
+# Map configuration for this repository. Read by tools/map (python -m map_build).
+
+# Plugin fixtures are inputs to conformance tests, not part of this project.
+exclude = [".agent/map/**", "results/**", "**/*.lock", "tools/map/**/fixtures/**", "tools/map/fixtures/**"]
+
+# The same order telemetryPath() uses. Unset variables are skipped; a missing file is a warning.
+[[stores.sqlite]]
+id = "telemetry"
+path = ["$PI_BUILD_TELEMETRY_DB", "$PI_CODING_AGENT_DIR/telemetry.db", "~/.pi/agent/telemetry.db"]
+identifiers = ["telemetryPath"]
+
+[[stores.file]]
+id = "known.md"
+globs = [".agent/explain/known.md", "known.md"]
+identifiers = ["knownPath"]
+
+[[stores.file]]
+id = "notes-index"
+globs = [".agent/notes/INDEX.md", "INDEX.md"]
+identifiers = ["indexPath", "indexFile"]
+
+[[stores.file]]
+id = "explain"
+globs = [".agent/explain/*.md"]
+identifiers = ["explainRel", "explainDir"]
+
+[[stores.file]]
+id = "quota-hold"
+globs = ["quota-hold.json"]
+identifiers = ["holdPath", "holdFile"]

@@ -1,0 +1,2 @@
+{"id":"file:notes","kind":"file_store","name":"notes","origin":{"extractor":"manifest.stores@1","provenance":"extracted","source":null},"type":"Entity"}
+{"id":"file:state","kind":"file_store","name":"state","origin":{"extractor":"manifest.stores@1","provenance":"extracted","source":null},"type":"Entity"}

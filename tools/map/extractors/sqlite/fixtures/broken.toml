@@ -1,0 +1,3 @@
+[[stores.sqlite]]
+id = "broken"
+path = "broken.db"

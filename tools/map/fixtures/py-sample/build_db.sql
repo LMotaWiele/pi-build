@@ -1,0 +1,2 @@
+CREATE TABLE turns (id TEXT PRIMARY KEY, parent_id TEXT);
+CREATE TABLE messages (id INTEGER PRIMARY KEY, turn_id TEXT NOT NULL REFERENCES turns(id), role TEXT NOT NULL, text TEXT NOT NULL);

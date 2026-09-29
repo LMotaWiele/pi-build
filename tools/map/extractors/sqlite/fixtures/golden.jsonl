@@ -1,0 +1,14 @@
+{"dst_ref":"db:library::authors","kind":"fk","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"src":"db:library::books","type":"Relation"}
+{"entity":"db:library::authors","name":"id","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"INTEGER"}
+{"entity":"db:library::authors","name":"name","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"TEXT"}
+{"entity":"db:library::books","name":"author_id","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"INTEGER"}
+{"entity":"db:library::books","name":"id","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"INTEGER"}
+{"entity":"db:library::books","name":"title","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"TEXT"}
+{"entity":"db:library::loans","name":"book_id","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"INTEGER"}
+{"entity":"db:library::loans","name":"id","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"INTEGER"}
+{"entity":"db:library::loans","name":"reader","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Field","type_ref":"TEXT"}
+{"extractor":"sqlite.schema@1","message":"store 'absent': no database at $MAP_FIXTURE_UNSET_VARIABLE, does-not-exist.db","path":null,"severity":"warning","type":"Diagnostic"}
+{"id":"db:library","kind":"file_store","name":"library","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Entity"}
+{"id":"db:library::authors","kind":"table","name":"authors","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Entity"}
+{"id":"db:library::books","kind":"table","name":"books","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Entity"}
+{"id":"db:library::loans","kind":"table","name":"loans","origin":{"extractor":"sqlite.schema@1","provenance":"extracted","source":null},"type":"Entity"}

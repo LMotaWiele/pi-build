@@ -4,6 +4,11 @@ trust.json
 npm/
 *.db
 !tools/map/fixtures/telemetry.db
+!tools/map/extractors/*/fixtures/*.db
+!tools/map/traces/fixtures/*/*.db
+tools/map/.venv/
+__pycache__/
+.pytest_cache/
 .pi-smart-router/
 sessions/
 *.env
