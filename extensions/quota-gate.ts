@@ -27,7 +27,7 @@
 // Behaviour:
 //   session_start          poll /backend-api/wham/usage once; pause or resolve a hold
 //   after_provider_response update usage from x-codex-*-used-percent headers
-//   message_end (assistant) pause a 5h window or resolve a weekly hold
+//   message_end (assistant) poll if quota headers were missing, then apply the gate
 //   before_agent_start     pause or resolve before any inference
 //   agent_end              a 429 usage-limit error polls, pauses and resumes, or holds
 //
@@ -116,6 +116,7 @@ export default function quotaGate(pi: ExtensionAPI) {
   const thresholds = resolveThresholds(loadQuotaSettings(), env);
   let windows: QuotaWindow[] = [];
   let lastProviderStatus: number | undefined;
+  let receivedQuotaHeaders = false;
   let requestFooterRender: (() => void) | null = null;
   let pendingPause: Promise<void> | null = null;
 
@@ -389,15 +390,23 @@ export default function quotaGate(pi: ExtensionAPI) {
     } else {
       windows = applyHeaderUsage(windows, usage);
     }
+    receivedQuotaHeaders = windows.every((w) => usage.some((u) => u.slot === w.slot));
     refreshFooter();
   });
 
   pi.on("message_end", async (event, ctx: Ctx) => {
     if (event?.message?.role !== "assistant") return;
+    // WebSocket replies (and some HTTP replies) have no quota headers. Do
+    // not leave the footer frozen at the session-start snapshot in that case.
+    const needsPoll = !receivedQuotaHeaders;
+    receivedQuotaHeaders = false;
+    if (isCodex(ctx) && needsPoll) await poll(ctx);
     if (!(await atBoundary(ctx))) stopHeadless(ctx);
   });
 
   pi.on("before_agent_start", async (_event, ctx: Ctx) => {
+    receivedQuotaHeaders = false;
+    lastProviderStatus = undefined;
     if (!(await atBoundary(ctx))) stopHeadless(ctx);
   });
 
