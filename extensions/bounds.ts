@@ -276,6 +276,8 @@ export default async function boundsExtension(pi: ExtensionAPI): Promise<void> {
       else pi.sendUserMessage("continue", { deliverAs: "followUp" });
     });
     pi.on("before_agent_start", (event) => {
+      // Older pi versions omit messageType; custom runs must not reset user-turn bounds.
+      if ("messageType" in event && event.messageType !== "user") return;
       if (event.prompt !== firedFor) boundFired = false;
       const turnId = turnSnapshot().turnId;
       if (turnId !== observedTurn) {

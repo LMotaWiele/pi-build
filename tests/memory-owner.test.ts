@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import memoryGateExtension from "../extensions/memory-gate.ts";
 import recapExtension from "../extensions/recap.ts";
-import { beginUserTurn, resetTelemetryForTests, setOpenNote } from "../lib/telemetry.ts";
+import { beginUserTurn, currentPrompt, resetTelemetryForTests, setOpenNote, turnSnapshot } from "../lib/telemetry.ts";
 
 const INDEX = `<!-- agent-memory-schema: 1 -->
 # Notes index — read this first
@@ -65,7 +65,7 @@ function fakePi() {
   };
 }
 
-async function assemble(order: "memory-first" | "recap-first", recapOn: boolean) {
+async function assemble(order: "memory-first" | "recap-first", recapOn: boolean, custom = false) {
   const dir = project(recapOn);
   const previousSettings = process.env.PI_BUILD_SETTINGS;
   const previousDb = process.env.PI_BUILD_TELEMETRY_DB;
@@ -96,11 +96,16 @@ async function assemble(order: "memory-first" | "recap-first", recapOn: boolean)
         return true;
       },
     });
+    const turnId = turnSnapshot().turnId;
     await pi.emit(
       "before_agent_start",
-      { prompt: "same prompt", systemPromptOptions: { sections } },
+      { ...(custom ? { messageType: "custom", message: { customType: "resume", content: "continue", display: false } }
+        : { messageType: "user", prompt: "same prompt" }), systemPromptOptions: { sections } },
       { cwd: dir, sessionManager: { getSessionId: () => "sess" } },
     );
+    assert.equal(turnSnapshot().turnId, turnId);
+    assert.equal(currentPrompt(), "same prompt");
+    assert.ok(sections.pi_build_tools);
     return { text: sections.pi_build_memory ?? "", writes };
   } finally {
     if (previousSettings === undefined) delete process.env.PI_BUILD_SETTINGS;
@@ -118,6 +123,17 @@ test("recap owns pi_build_memory in either load order", async () => {
     assert.match(assembled.text, /the harness keeps the claim/);
     assert.match(assembled.text, /If tests fail then revert/);
   }
+});
+
+test("custom starts retain the user turn and still inject setup", async () => {
+  for (const order of ["memory-first", "recap-first"] as const) {
+    const assembled = await assemble(order, true, true);
+    assert.equal(assembled.writes, 1);
+    assert.match(assembled.text, /the harness keeps the claim/);
+  }
+  const assembled = await assemble("memory-first", false, true);
+  assert.equal(assembled.writes, 1);
+  assert.match(assembled.text, /Active next/);
 });
 
 test("memory-gate writes pi_build_memory when recap is disabled", async () => {

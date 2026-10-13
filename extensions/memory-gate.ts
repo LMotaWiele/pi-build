@@ -131,7 +131,10 @@ export default async function memoryGateExtension(pi: ExtensionAPI): Promise<voi
     });
 
     pi.on("before_agent_start", (event, ctx) => {
-      notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
+      // Only user prompts start a new memory turn; setup below also runs for custom messages.
+      if (!("messageType" in event) || event.messageType === "user") {
+        notePrompt(ctx.sessionManager.getSessionId(), event.prompt);
+      }
       const root = findProjectRoot(ctx.cwd);
       const marked = loadIndex(root);
       if (marked && injectIndex && !recapOwnsMemory) event.systemPromptOptions.sections.pi_build_memory = marked;

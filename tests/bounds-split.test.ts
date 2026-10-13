@@ -73,6 +73,7 @@ function fakePi() {
   const pi = {
     handlers,
     sent: "",
+    sentOptions: undefined as unknown,
     modelSet: false,
     model: null as { provider: string; id: string } | null,
     thinking: "",
@@ -84,8 +85,9 @@ function fakePi() {
     appendEntry() {},
     registerTool() {},
     sendMessage() {},
-    sendUserMessage(text: string) {
+    sendUserMessage(text: string, options?: unknown) {
       pi.sent = text;
+      pi.sentOptions = options;
     },
     async setModel(model: { provider: string; id: string }) {
       pi.modelSet = true;
@@ -167,6 +169,20 @@ test("a budget bound checkpoints written files and stops without retry", async (
   });
 });
 
+test("compaction auto-resume explicitly queues a follow-up while busy", async () => {
+  const { dir, settings } = workspace();
+  await withSettings(settings, async () => {
+    const bounds = fakePi();
+    await boundsExtension(bounds as never);
+    beginUserTurn("sess", "original prompt");
+    const ctx = { cwd: dir, mode: "tui", isIdle: () => false, abort() {} };
+    await bounds.emit("session_before_compact", { reason: "overflow", willRetry: false }, ctx);
+    await bounds.emit("agent_end", { messages: [] }, ctx);
+    assert.equal(bounds.sent, "continue");
+    assert.deepEqual(bounds.sentOptions, { deliverAs: "followUp" });
+  });
+});
+
 test("disabling routing leaves the bounds running", async () => {
   const { dir, settings } = workspace();
   await withSettings(settings, async () => {
@@ -224,7 +240,9 @@ test("a Luna bound retries once on GPT-6 Sol at medium", async () => {
     bounds.sent = "";
     beginUserTurn("sess", first);
     noteWrittenFile("src/b.ts");
-    await bounds.emit("before_agent_start", { prompt: first, systemPromptOptions: { sections: {} } }, ctx);
+    await bounds.emit("before_agent_start", { messageType: "user", prompt: first, systemPromptOptions: { sections: {} } }, ctx);
+    // A custom start must not clear the already-fired bound and enable a second retry.
+    await bounds.emit("before_agent_start", { messageType: "custom", message: { customType: "resume", content: "continue" }, systemPromptOptions: { sections: {} } }, ctx);
     await repeatToolResult(bounds, ctx);
     assert.equal(bounds.sent, "");
   });

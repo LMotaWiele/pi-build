@@ -250,6 +250,8 @@ export default function readGuardExtension(pi: ExtensionAPI): void {
     const diffOnWrite = block["diffOnRepeatAfterWrite"] !== false;
 
     pi.on("before_agent_start", (event, ctx) => {
+      // Preserve read history on custom continuations (pre-1.2 events omit messageType).
+      if ("messageType" in event && event.messageType !== "user") return;
       if (notePrompt(ctx.sessionManager.getSessionId(), event.prompt)) guard.onNewPrompt();
     });
 

@@ -96,6 +96,23 @@ function readEvent(id: string, filePath: string, text: string, extra: Record<str
   };
 }
 
+test("custom starts preserve read deduplication; user starts reset it", async () => {
+  await withGuard(undefined, async (session) => {
+    fs.writeFileSync(path.join(session.dir, "a.ts"), "value = 1\n");
+    await session.tool(readEvent("c1", "a.ts", "value = 1\n"));
+    for (const handler of session.handlers.get("before_agent_start") ?? []) {
+      await handler({ messageType: "custom", message: { customType: "resume", content: "continue" } }, session.ctx);
+    }
+    const repeated = await session.tool(readEvent("c2", "a.ts", "value = 1\n"));
+    assert.match(resultText(repeated.content), POINTER);
+    for (const handler of session.handlers.get("before_agent_start") ?? []) {
+      await handler({ messageType: "user", prompt: "new request" }, session.ctx);
+    }
+    const fresh = await session.tool(readEvent("c3", "a.ts", "value = 1\n"));
+    assert.equal(resultText(fresh.content), "value = 1\n");
+  });
+});
+
 test("V1 identical re-read returns the pointer", async () => {
   await withGuard(undefined, async (session) => {
     const file = path.join(session.dir, "a.ts");

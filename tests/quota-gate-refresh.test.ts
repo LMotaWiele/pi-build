@@ -37,10 +37,12 @@ test("quota retrieval redraws the footer throughout the same session", async (t)
     } }));
   }) as typeof fetch;
 
+  const sent: { text: string; options: unknown }[] = [];
   const handlers = new Map<string, (event: any, ctx: any) => unknown>();
   quotaGate({
     on(name: string, handler: (event: any, ctx: any) => unknown) { handlers.set(name, handler); },
     appendEntry() {},
+    sendUserMessage(text: string, options: unknown) { sent.push({ text, options }); },
   } as any);
   let renders = 0;
   let lines: string[] = [];
@@ -103,6 +105,13 @@ test("quota retrieval redraws the footer throughout the same session", async (t)
   fail = false; fiveHour = 15; weekly = 25;
   await emit("message_end", { message: { role: "assistant" } });
   expectQuota(15, 25);
+
+  // A quota-reset resume must explicitly queue, even if the session is still busy.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  Object.assign(ctx, { isIdle: () => false });
+  Object.assign(ctx.ui, { notify() { t.mock.timers.tick(600_000); } });
+  await emit("agent_end", { error: { status: 429, message: "usage limit reached" } });
+  assert.deepEqual(sent, [{ text: "continue", options: { deliverAs: "followUp" } }]);
 
   ctx.model.provider = "other-provider";
   const previousPolls = polls;

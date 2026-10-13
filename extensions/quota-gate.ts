@@ -427,7 +427,7 @@ export default function quotaGate(pi: ExtensionAPI) {
       if (ctx.mode === "print") {
         pi.appendEntry("pi-build-continue-needed", { reason: "usage_limit", at: new Date().toISOString() });
       } else {
-        pi.sendUserMessage("continue");
+        pi.sendUserMessage("continue", { deliverAs: "followUp" });
       }
       return;
     }
