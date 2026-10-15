@@ -22,6 +22,31 @@ export function buildSummary(input: {
 
   lines.push("", "## Run", `Spec: ${spec}`, `Base: ${typeof metadata?.base === "string" ? metadata.base.slice(0, 7) : "missing"}`, `Base branch: ${metadata?.baseBranch ?? "missing"}`, `Started at: ${metadata?.startedAt ?? "missing"}`, `Run directory: ${runDir}`);
 
+  lines.push("", "## Spec tests");
+  const specTests = readJson("spec-tests.json");
+  if (specTests && typeof specTests === "object") {
+    lines.push(`Written by ${specTests.writer ?? "missing"} in ${specTests.rounds ?? "missing"} round(s)`);
+    if (Array.isArray(specTests.files)) {
+      for (const file of specTests.files) {
+        if (!file || typeof file !== "object") continue;
+        const status = file.before === "fail" ? "fail-to-pass" : "pass-to-pass";
+        lines.push(`- ${file.file ?? "missing"}: ${status}`);
+      }
+    }
+    if (Array.isArray(specTests.manual)) {
+      for (const manual of specTests.manual) {
+        if (!manual || typeof manual !== "object") continue;
+        lines.push(`- ${manual.check ?? "missing"}: ${manual.reason ?? "missing"}`);
+      }
+    }
+  } else if (metadata?.specTests === "supplied") {
+    lines.push("supplied with the spec");
+  } else if (metadata?.specTests === "generated") {
+    lines.push("to be written; not finished");
+  } else {
+    lines.push("not recorded");
+  }
+
   lines.push("", "## Plan gate");
   let gateFound = false;
   try {
