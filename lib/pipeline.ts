@@ -170,6 +170,7 @@ export function testCommands(files: string[], opts: { pythonProject: string }): 
 }
 
 export interface PreflightInput {
+  specPaths?: { spec: string; tests: string };
   specText: string;
   hasTestsDir: boolean;
   held: boolean;
@@ -182,6 +183,27 @@ export interface Preflight {
   checks: number | null;
   blocking: string[];
   warnings: string[];
+}
+
+export function uncommittedSpecPaths(dirty: string[], paths: { spec: string; tests: string }): string[] {
+  const matches: string[] = [];
+  for (const line of dirty) {
+    const status = line.slice(0, 2);
+    const rawPath = line.slice(3);
+    const path = status.includes("R") && rawPath.includes(" -> ")
+      ? rawPath.slice(rawPath.indexOf(" -> ") + 4)
+      : rawPath;
+    const exact = path === paths.spec || path === paths.tests || path === `${paths.tests}/`;
+    const descendant = path.startsWith(`${paths.tests}/`);
+    const untrackedDirectory = status === "??" && path.endsWith("/") &&
+      (paths.spec.startsWith(path) || paths.tests.startsWith(path));
+    if (exact || descendant || untrackedDirectory) matches.push(path);
+  }
+  return matches;
+}
+
+export function gateRepairable(errors: string[]): boolean {
+  return !errors.includes("verification count changed");
 }
 
 // Everything that must hold before the first model call.
@@ -201,6 +223,12 @@ export function preflight(input: PreflightInput): Preflight {
   }
   if (input.dirty.length) {
     warnings.push(`${input.dirty.length} uncommitted path(s) are not part of the run, which starts from HEAD: ${input.dirty.slice(0, 5).join(", ")}`);
+  }
+  if (input.specPaths) {
+    const matches = uncommittedSpecPaths(input.dirty, input.specPaths);
+    if (matches.length) {
+      blocking.push(`uncommitted changes to ${input.specPaths.spec} relative to HEAD: ${matches.join(", ")}`);
+    }
   }
   return { checks, blocking, warnings };
 }
