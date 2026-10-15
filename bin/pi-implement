@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { countVerifyChecks, pipelineThinking, undeclaredImports, validatePlan } from "../lib/plan.ts";
 import { childEnv, childPiArgs, costByRole, gateRepairable, landReviewBranch, pipelineRunRoot, planPrompt, preflight, pythonProjectFor, runDirBase, targetRepo, testCommands, testEnv, uncommittedSpecPaths } from "../lib/pipeline.ts";
 import { buildSummary } from "../lib/run-summary.ts";
+import { isTestFile, manualEntries, parseErrors, pathsOutside, specTestsGate, specTestsPrompt } from "../lib/spec-tests.ts";
 import { installSpec } from "../lib/install-spec.ts";
 import { childEventToProgress, finalText, parseProgressLine } from "../lib/progress.ts";
 import { markImplemented, resolveSpec, specPaths } from "../lib/specs.ts";
@@ -75,7 +76,7 @@ const filesIn = (dir, prefix = "") => fs.existsSync(dir) ? fs.readdirSync(dir, {
   return entry.isDirectory() ? filesIn(path.join(dir, entry.name), rel) : [rel];
 }) : [];
 async function tests(work, files, pythonProject) {
-  const cmds = testCommands(files, { pythonProject });
+  const cmds = testCommands(files, { pythonProject: pythonProject ?? "" });
   if (!cmds.length) return { code: 1, output: "no recognized test files" };
   const results = [];
   for (const { cmd, args } of cmds) {
@@ -210,9 +211,11 @@ const planRel = path.join("docs/specs", paths.plan);
 const dirty = execFileSync("git", ["-C", target, "status", "--porcelain"], { encoding: "utf8" }).split("\n").filter(Boolean);
 const settings = readPiSettings();
 const pythonProject = pythonProjectFor({ target, harnessRoot, settings });
+const suppliedTests = fs.existsSync(path.join(target, testRel));
+const writeTests = settings.pipeline?.writeSpecTests !== false;
 const testFiles = filesIn(path.join(target, testRel), testRel);
 stage("preflight");
-const check = preflight({ specText: read(path.join(target, specRel)), hasTestsDir: fs.existsSync(path.join(target, testRel)),
+const check = preflight({ specText: read(path.join(target, specRel)), hasTestsDir: suppliedTests, writeTests,
   held: readHold(defaultHoldPath(process.env)) !== null, dirty, testFiles, pythonProject,
   ...(!flags.has("--dry-run") ? { specPaths: { spec: specRel, tests: testRel } } : {}) });
 if (flags.has("--dry-run")) {
@@ -227,13 +230,15 @@ for (const warning of check.warnings) { console.error(`warning: ${warning}`); em
 if (check.blocking.length) exit(check.blocking.join("\n"), check.blocking.some((s) => s.includes("quota hold")) ? 75 : 2);
 const planner = settings.routing?.tiers?.escalate || "openai-codex/gpt-6-sol";
 const editor = settings.routing?.tiers?.scout || "openai-codex/gpt-6-luna";
+const testWriter = settings.pipeline?.testWriter || planner;
 const levels = pipelineThinking(settings);
 const commands = testCommands(testFiles, { pythonProject: pythonProject ?? "" });
 const base = runDirBase({ runRoot: pipelineRunRoot(settings, os.homedir()), target, harnessRoot, id: spec.id, slug: spec.slug });
 if (flags.has("--dry-run")) {
   const text = JSON.stringify({ spec: specRel, tests: testRel, plan: planRel, runRecord: paths.runRecord,
     checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands,
-    target, harnessRoot, runDir: base, pythonProject }, null, 2);
+    target, harnessRoot, runDir: base, pythonProject,
+    specTests: suppliedTests ? "supplied" : `to be written by ${testWriter} at ${levels.planner}` }, null, 2);
   if (progress) { process.stderr.write(`${text}\n`); finish(true, "dry run complete"); }
   else console.log(text);
   process.exit(0);
@@ -247,6 +252,7 @@ const metaPath = path.join(dir, "pipeline.json");
 if (flags.has("--resume")) currentRunDir = dir;
 const metadata = flags.has("--resume") ? JSON.parse(read(metaPath)) : {
   branch: `pipeline/SPEC-${spec.id}-${spec.slug}-${stamp}`, spec: specRel, stamp,
+  specTests: suppliedTests ? "supplied" : "generated",
   startedAt: new Date().toISOString(), base: git(target, "rev-parse", "HEAD"),
   baseBranch: (() => { try { return git(target, "symbolic-ref", "--short", "-q", "HEAD") || null; } catch { return null; } })(),
 };
@@ -261,12 +267,85 @@ if (!flags.has("--resume")) {
   git(target, "branch", branch, metadata.base);
   git(target, "worktree", "add", work, branch);
 }
+// Use saved metadata, not the target's current tests/settings, when resuming.
+// Markerless legacy runs must not speculatively start a new writing stage.
+const specTestsPath = path.join(dir, "spec-tests.json");
+if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
+  stage("spec-tests");
+  let previousErrors = [];
+  for (let round = 1; round <= 3; round++) {
+    const written = await pi(work, testWriter, levels.planner,
+      specTestsPrompt({ spec: specRel, testsDir: testRel, checks: check.checks, pythonProject, errors: previousErrors }),
+      path.join(dir, `spec-tests-${round}.log`), path.join(dir, `spec-tests-${round}-telemetry.db`));
+    // Avoid rename folding here: both an outside source deletion and an outside
+    // destination must be restored, even when the other side is inside tests.
+    const dirty = execFileSync("git", ["-C", work, "status", "--porcelain", "--no-renames", "--untracked-files=all"], { encoding: "utf8" }).split("\n").filter(Boolean);
+    const outside = pathsOutside(dirty, testRel);
+    for (const file of outside) {
+      if (git(work, "--literal-pathspecs", "ls-tree", "-r", "--name-only", "HEAD", "--", file)) {
+        git(work, "--literal-pathspecs", "restore", "--source=HEAD", "--staged", "--worktree", "--", file);
+      } else {
+        // A writer may have staged a new outside path. Remove it from the index
+        // before cleaning it; a path-scoped commit alone would leave it staged.
+        if (git(work, "--literal-pathspecs", "ls-files", "--", file)) git(work, "--literal-pathspecs", "rm", "--cached", "-f", "--", file);
+        git(work, "--literal-pathspecs", "clean", "-fd", "--", file);
+      }
+    }
+    // Keep local memory noise on disk, but never carry a writer-staged .agent
+    // path into the later (unchanged) plan commit.
+    if (git(work, "diff", "--cached", "--name-only", "--", ".agent")) git(work, "restore", "--source=HEAD", "--staged", "--", ".agent");
+    if (outside.length) {
+      const text = `Discarded test writer edits outside ${testRel}: ${outside.join(", ")}`;
+      console.error(text);
+      emit({ type: "notice", text });
+    }
+    if (written.code !== 0) exit(`spec tests writer failed: ${written.output}`, 1);
+    const files = filesIn(path.join(work, testRel), testRel);
+    const automated = files.filter(isTestFile);
+    const manualPath = path.join(work, testRel, "MANUAL.md");
+    const manual = fs.existsSync(manualPath) ? read(manualPath) : null;
+    const syntaxErrors = parseErrors(work, files);
+    if (pythonProject === null) {
+      for (const file of automated.filter((file) => file.endsWith(".py"))) syntaxErrors.push(`${file}: Python tests but no Python project; add .pi/pipeline.json with pythonProject`);
+    }
+    const before = [];
+    for (const file of automated) {
+      const result = await tests(work, [file], pythonProject);
+      before.push({ file, passed: result.code === 0 });
+    }
+    previousErrors = specTestsGate({ checks: check.checks, files, manual, syntaxErrors, before });
+    write(path.join(dir, `spec-tests-gate-${round}.log`), previousErrors.length ? previousErrors.join("\n") : "pass\n");
+    if (previousErrors.length) {
+      const text = `Spec tests gate round ${round}: ${previousErrors.join("\n")}`;
+      console.error(text);
+      emit({ type: "notice", text });
+      if (round === 3) exit(`spec tests rejected after three rounds:\n${previousErrors.join("\n")}`, 1);
+      continue;
+    }
+    // --only excludes unrelated index entries, including ignored .agent noise.
+    git(work, "add", "--", testRel);
+    git(work, "commit", "--only", "-m", `spec tests: SPEC-${spec.id} (written by ${testWriter})`, "--", testRel);
+    write(specTestsPath, JSON.stringify({ writer: testWriter, rounds: round,
+      files: before.map(({ file, passed }) => ({ file, before: passed ? "pass" : "fail" })),
+      manual: manualEntries(manual) }, null, 2));
+    break;
+  }
+}
+// run-plan protects tests after planning. Preserve the tests-only baseline
+// around planner calls too, including a planner that stages a test edit.
+const frozenSpecTests = metadata.specTests === "generated" ? git(work, "rev-parse", "HEAD") : null;
+function restoreFrozenSpecTests() {
+  if (!frozenSpecTests) return;
+  git(work, "restore", `--source=${frozenSpecTests}`, "--staged", "--worktree", "--", testRel);
+  git(work, "clean", "-fd", "--", testRel);
+}
+restoreFrozenSpecTests();
 const workPlan = path.join(work, planRel, "plan.json");
-const specTests = filesIn(path.join(work, testRel), testRel);
 stage("plan");
 if (!fs.existsSync(workPlan)) {
   const created = await pi(work, planner, levels.planner, planPrompt({ spec: specRel, planDir: planRel, checks: check.checks, harnessRoot }),
     path.join(dir, "planner.log"), path.join(dir, "planner-telemetry.db"));
+  restoreFrozenSpecTests();
   if (created.code !== 0) exit(`planning failed: ${created.output}`);
 }
 stage("gate");
@@ -305,8 +384,10 @@ for (let repair = 0; repair <= 2; repair++) {
   if (repair === 2) exit(`plan gate failed after two repairs:\n${gate}`);
   const fixed = await pi(work, planner, levels.planner, `Repair the plan and its acceptance tests only. Gate errors:\n${gate}\nDo not implement tasks.`,
     path.join(dir, `repair-${repair + 1}.log`), path.join(dir, `repair-${repair + 1}-telemetry.db`));
+  restoreFrozenSpecTests();
   if (fixed.code !== 0) exit(`plan repair failed: ${fixed.output}`);
 }
+restoreFrozenSpecTests();
 git(work, "add", "--", planRel);
 if (git(work, "diff", "--cached", "--name-only")) git(work, "commit", "-m", `plan: SPEC-${spec.id}`);
 write(path.join(dir, "gate.json"), JSON.stringify({ result: gate, checks: check.checks }, null, 2));
@@ -351,7 +432,11 @@ const branchReport = path.join(work, planRel, "report.md");
 write(branchReport, read(report));
 const runRecord = path.join(work, "docs/specs", paths.runRecord);
 const costs = runCosts(dir);
-const record = `# SPEC-${spec.id} run\n\nImplemented by: pi pipeline\n\nBranch: ${branch}\nPlan: ${planRel}; gate: ${gate}; checks: ${check.checks}\n\n` +
+const specTestsRecord = fs.existsSync(specTestsPath) ? JSON.parse(read(specTestsPath)) : null;
+const specTestsLine = specTestsRecord
+  ? `Spec tests: written by ${specTestsRecord.writer} before planning; see spec-tests.json in ${dir}`
+  : "Spec tests: supplied with the spec";
+const record = `# SPEC-${spec.id} run\n\nImplemented by: pi pipeline\n\nBranch: ${branch}\nPlan: ${planRel}; gate: ${gate}; checks: ${check.checks}\n${specTestsLine}\n\n` +
   `## Tasks\n${resultRows.map((row) => `- ${row.id}: ${row.acceptance}; model ${row.model}; rounds ${row.rounds}; cost $${row.providerCost}`).join("\n")}\n\n` +
   `## Final grade\n\n\`\`\`json\n${JSON.stringify(grade, null, 2)}\n\`\`\`\n\n` +
   `## Runtime\nStuck findings, escalations and pauses: see task session logs and telemetry in ${dir}.\n` +

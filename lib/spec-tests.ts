@@ -13,7 +13,7 @@ export function isTestFile(file: string): boolean {
 
 export function checksNamed(file: string): number[] {
   const base = path.posix.basename(file.replaceAll("\\", "/"));
-  return [...base.matchAll(/(?:^|[^a-z0-9])v(\d+)(?!\d)/gi)].map((m) => Number(m[1]));
+  return [...base.matchAll(/(?:^|[^a-zA-Z0-9])v(\d+)(?!\d)/g)].map((m) => Number(m[1]));
 }
 
 export function manualEntries(text: string | null): { check: string; reason: string }[] {
@@ -48,10 +48,15 @@ export function specTestsGate(input: { checks: number; files: string[]; manual: 
 }
 
 function decodePorcelainPath(value: string): string {
-  if (value.startsWith('"')) {
-    try { return JSON.parse(value); } catch { return value.slice(1, -1); }
+  if (!value.startsWith('"') || !value.endsWith('"')) return value;
+  // Git C-quotes UTF-8 bytes as octal escapes, which JSON.parse cannot decode.
+  const chunks: Buffer[] = [];
+  const escapes: Record<string, string> = { a: "\u0007", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r" };
+  for (const part of value.slice(1, -1).matchAll(/\\([0-7]{1,3}|.)|([^\\]+)/g)) {
+    chunks.push(part[2] !== undefined ? Buffer.from(part[2]) : /^[0-7]+$/.test(part[1])
+      ? Buffer.from([parseInt(part[1], 8)]) : Buffer.from(escapes[part[1]] ?? part[1]));
   }
-  return value;
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 export function pathsOutside(dirty: string[], dir: string): string[] {
@@ -60,8 +65,16 @@ export function pathsOutside(dirty: string[], dir: string): string[] {
   for (const line of dirty) {
     if (line.length < 4) continue;
     const raw = line.slice(3);
-    const split = raw.lastIndexOf(" -> ");
-    const file = decodePorcelainPath(split >= 0 ? raw.slice(split + 4) : raw);
+    let destination = 0;
+    if (/[RC]/.test(line.slice(0, 2))) {
+      let quoted = false;
+      for (let i = 0; i < raw.length; i++) {
+        if (quoted && raw[i] === "\\") { i++; continue; }
+        if (raw[i] === '"') quoted = !quoted;
+        else if (!quoted && raw.startsWith(" -> ", i)) destination = i + 4;
+      }
+    }
+    const file = decodePorcelainPath(raw.slice(destination));
     if (file.startsWith(".agent/")) continue;
     if (file === root || file.startsWith(`${root}/`)) continue;
     outside.push(file);
@@ -77,7 +90,7 @@ export function specTestsPrompt(input: { spec: string; testsDir: string; checks:
 
 export function parseErrors(root: string, files: string[]): string[] {
   const errors: string[] = [];
-  let scratch: string | undefined;
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "spec-tests-parse-"));
   try {
     for (const file of files) {
       if (!isTestFile(file)) continue;
@@ -88,10 +101,10 @@ export function parseErrors(root: string, files: string[]): string[] {
       if (ext === ".ts" || ext === ".mts") {
         try {
           const stripped = stripTypeScriptTypes(fs.readFileSync(full, "utf8"));
-          scratch = path.join(os.tmpdir(), `spec-tests-${process.pid}-${Math.random().toString(36).slice(2)}.mjs`);
-          fs.writeFileSync(scratch, stripped);
+          const strippedFile = path.join(scratch, "stripped.mjs");
+          fs.writeFileSync(strippedFile, stripped);
           command = process.execPath;
-          args = ["--check", scratch];
+          args = ["--check", strippedFile];
         } catch (error) {
           const line = String(error).split(/\r?\n/, 1)[0];
           errors.push(`${file}: syntax error: ${line}`);
@@ -104,15 +117,15 @@ export function parseErrors(root: string, files: string[]): string[] {
         command = "python3";
         args = ["-m", "py_compile", full];
       }
-      const result = spawnSync(command, args, { encoding: "utf8" });
+      const result = spawnSync(command, args, { encoding: "utf8",
+        env: { ...process.env, PYTHONPYCACHEPREFIX: path.join(scratch, "pycache") } });
       if (result.error || result.status !== 0) {
         const output = result.stderr || result.stdout || String(result.error ?? "syntax check failed");
         errors.push(`${file}: syntax error: ${output.split(/\r?\n/, 1)[0]}`);
       }
-      if (scratch) { fs.rmSync(scratch, { force: true }); scratch = undefined; }
     }
   } finally {
-    if (scratch) fs.rmSync(scratch, { force: true });
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
   return errors;
 }
