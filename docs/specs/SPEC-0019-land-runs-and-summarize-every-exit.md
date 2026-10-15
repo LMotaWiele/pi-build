@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | ready |
+| Status | implemented |
 | Size | M |
 | Kind | fix |
 | Parent | SPEC-0018 |
