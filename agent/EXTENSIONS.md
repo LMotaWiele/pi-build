@@ -41,7 +41,7 @@ The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`).
 
 ## Pipeline tool
 
-`extensions/pipeline.ts` owns the directly exposed (`exposure: "direct"`) `implement_spec` tool and subscribes to no events. The runner, libraries and settings belong to the installed harness; the session's git repository owns the spec, tests, worktrees and branch handoff. Failure reporting, including the stop-and-report sentence, stays local to the tool's description and non-handoff results, not prompt sections or guidelines.
+`extensions/pipeline.ts` owns the directly exposed (`exposure: "direct"`) `implement_spec` tool and subscribes to no events. The runner, libraries and settings belong to the installed harness; the session's git repository owns the spec, tests, worktrees and branch handoff. A downloaded `.md` with sibling tests or `.zip` is installed and committed before running. Passing runs safely fast-forward the unchanged starting branch by default (`pipeline.land: false` in host settings opts out); unsafe landing keeps the review branch with a reason. Every post-directory exit links `<runDir>/summary.md`. Landed and kept-branch handoffs, and successful plan-only calls, are successes; continue a plan-only call with `implement_spec` and `resume: true`. Failure reporting, including the stop-and-report sentence, stays local to the tool's description and failed results, not prompt sections or guidelines.
 
 ## Invalidation budget
 

@@ -1,6 +1,6 @@
 // The JSONL contract between the pipeline runner and the chat tool. Child pi JSON
 // events are translated here; only ProgressEvent objects go on runner stdout.
-export type ProgressStage = "preflight" | "plan" | "gate" | "tasks" | "integration" | "grade" | "handoff";
+export type ProgressStage = "preflight" | "plan" | "gate" | "tasks" | "integration" | "grade" | "handoff" | "install" | "land";
 export type ProgressRole = "planner" | "editor" | "integration" | "other";
 
 export type ProgressEvent =
@@ -10,7 +10,7 @@ export type ProgressEvent =
   | { type: "activity"; role: string; taskId?: string; tool: string; target: string }
   | { type: "usage"; role: string; taskId?: string; cost: number }
   | { type: "notice"; text: string }
-  | { type: "done"; ok: boolean; branch?: string; runRecord?: string; summary?: string };
+  | { type: "done"; ok: boolean; branch?: string; runRecord?: string; summary?: string; landed?: string; summaryPath?: string };
 
 export interface ProgressTask {
   id: string;
@@ -44,7 +44,7 @@ function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-const STAGES: readonly string[] = ["preflight", "plan", "gate", "tasks", "integration", "grade", "handoff"];
+const STAGES: readonly string[] = ["preflight", "plan", "gate", "tasks", "integration", "grade", "handoff", "install", "land"];
 
 // A bad/stray stdout line must never turn into UI state.
 export function parseProgressLine(line: string): ProgressEvent | null {
@@ -75,7 +75,8 @@ export function parseProgressLine(line: string): ProgressEvent | null {
       return typeof value.text === "string" ? value as ProgressEvent : null;
     case "done":
       return typeof value.ok === "boolean" && optionalString(value.branch) &&
-        optionalString(value.runRecord) && optionalString(value.summary) ? value as ProgressEvent : null;
+        optionalString(value.runRecord) && optionalString(value.summary) && optionalString(value.landed) &&
+        optionalString(value.summaryPath) ? value as ProgressEvent : null;
     default:
       return null;
   }
@@ -161,25 +162,31 @@ export function renderProgress(state: ProgressState, expanded: boolean): string[
   const headline = `${state.spec} · ${state.stage} · ${passed}/${state.tasks.length} tasks · ${money(state.cost.total)}`;
   if (!expanded) {
     const latest = state.done?.summary ?? state.notices.at(-1) ?? state.current.recent.at(-1);
-    return latest ? [headline, latest] : [headline];
+    const lines = latest ? [headline, latest] : [headline];
+    if (state.done?.landed !== undefined) lines.push(state.done.ok ? `Landed on ${state.done.landed}` : "Failed");
+    if (state.done?.summaryPath) lines.push(`Summary: ${state.done.summaryPath}`);
+    return lines;
   }
   return [headline,
     ...state.tasks.map((task) => `${task.id} ${task.title} (${task.model}) — ${task.status}${task.rounds === undefined ? "" : `, ${task.rounds} rounds`}${task.result ? `: ${task.result}` : ""}`),
     ...state.current.recent,
     ...state.notices.map((notice) => `Notice: ${notice}`),
-    ...(state.done ? [state.done.ok ? "Handed off" : "Failed", ...(state.done.branch ? [`Branch: ${state.done.branch}`] : []),
-      ...(state.done.runRecord ? [`Run record: ${state.done.runRecord}`] : [])] : []),
+    ...(state.done ? [!state.done.ok ? "Failed" : state.done.landed !== undefined ? `Landed on ${state.done.landed}` : "Handed off",
+      ...(state.done.landed === undefined && state.done.branch ? [`Branch: ${state.done.branch}`] : []),
+      ...(state.done.runRecord ? [`Run record: ${state.done.runRecord}`] : []),
+      ...(state.done.summaryPath ? [`Summary: ${state.done.summaryPath}`] : [])] : []),
   ];
 }
 
 export function progressSummary(state: ProgressState): string {
-  const status = state.done ? (state.done.ok ? "Handed off" : "Failed") : `Running ${state.stage}`;
+  const status = state.done ? (!state.done.ok ? "Failed" : state.done.landed !== undefined ? `Landed on ${state.done.landed}` : "Handed off") : `Running ${state.stage}`;
   const passed = state.tasks.filter((task) => task.status === "pass").length;
   const cost = state.cost;
   return [
     `${state.spec}: ${status} (${passed}/${state.tasks.length} tasks).`,
     state.done?.summary,
-    state.done?.branch && `Branch: ${state.done.branch}`,
+    state.done?.landed === undefined && state.done?.branch && `Branch: ${state.done.branch}`,
+    state.done?.summaryPath && `Summary: ${state.done.summaryPath}`,
     state.done?.runRecord && `Run record: ${state.done.runRecord}`,
     `Cost: planner ${money(cost.planner)}, editor ${money(cost.editor)}, integration ${money(cost.integration)}, other ${money(cost.other)}, total ${money(cost.total)}.`,
   ].filter((part): part is string => typeof part === "string" && part.length > 0).join("\n");

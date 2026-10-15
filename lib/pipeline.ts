@@ -170,6 +170,7 @@ export function testCommands(files: string[], opts: { pythonProject: string }): 
 }
 
 export interface PreflightInput {
+  specPaths?: { spec: string; tests: string };
   specText: string;
   hasTestsDir: boolean;
   held: boolean;
@@ -182,6 +183,95 @@ export interface Preflight {
   checks: number | null;
   blocking: string[];
   warnings: string[];
+}
+
+export function uncommittedSpecPaths(dirty: string[], paths: { spec: string; tests: string }): string[] {
+  const matches: string[] = [];
+  for (const line of dirty) {
+    const status = line.slice(0, 2);
+    const rawPath = line.slice(3);
+    let destination = 0;
+    if (status.includes("R")) {
+      let quoted = false;
+      for (let i = 0; i < rawPath.length; i++) {
+        if (quoted && rawPath[i] === "\\") { i++; continue; }
+        if (rawPath[i] === '"') quoted = !quoted;
+        else if (!quoted && rawPath.startsWith(" -> ", i)) destination = i + 4;
+      }
+    }
+    let path = rawPath.slice(destination);
+    // Git C-quotes paths with spaces/control characters, and may octal-escape
+    // UTF-8 bytes. Decode before checking the tests-directory boundary.
+    if (path.startsWith('"') && path.endsWith('"')) {
+      const chunks: Buffer[] = [];
+      const escapes: Record<string, string> = { a: "\u0007", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r" };
+      for (const part of path.slice(1, -1).matchAll(/\\([0-7]{1,3}|.)|([^\\]+)/g)) {
+        chunks.push(part[2] !== undefined ? Buffer.from(part[2]) : /^[0-7]+$/.test(part[1])
+          ? Buffer.from([parseInt(part[1], 8)]) : Buffer.from(escapes[part[1]] ?? part[1]));
+      }
+      path = Buffer.concat(chunks).toString("utf8");
+    }
+    const exact = path === paths.spec || path === paths.tests || path === `${paths.tests}/`;
+    const descendant = path.startsWith(`${paths.tests}/`);
+    const untrackedDirectory = status === "??" && path.endsWith("/") &&
+      (paths.spec.startsWith(path) || paths.tests.startsWith(path));
+    if (exact || descendant || untrackedDirectory) matches.push(path);
+  }
+  return matches;
+}
+
+export function gateRepairable(errors: string[]): boolean {
+  return !errors.includes("verification count changed");
+}
+
+export function landReviewBranch(input: {
+  target: string;
+  branch: string;
+  base: string;
+  baseBranch: string | null;
+  enabled: boolean;
+}): { landed: boolean; onto?: string; reason: string } {
+  if (!input.enabled) return { landed: false, reason: "Landing disabled" };
+  if (input.baseBranch === null) return { landed: false, reason: "Base branch is detached" };
+
+  let currentBranch: string | null;
+  let currentBase: string;
+  try {
+    currentBranch = execFileSync("git", ["-C", input.target, "symbolic-ref", "--short", "-q", "HEAD"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    }).trim() || null;
+  } catch (error) {
+    if ((error as { status?: number }).status === 1) currentBranch = null;
+    else return { landed: false, reason: "Unable to read target HEAD state" };
+  }
+  if (currentBranch !== input.baseBranch) {
+    return { landed: false, reason: `Target is on ${currentBranch ?? "detached HEAD"}, not ${input.baseBranch}` };
+  }
+  try {
+    currentBase = execFileSync("git", ["-C", input.target, "rev-parse", input.baseBranch], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return { landed: false, reason: "Unable to read target base state" };
+  }
+  if (currentBase !== input.base) return { landed: false, reason: "Base branch moved" };
+
+  try {
+    execFileSync("git", ["-C", input.target, "merge", "--ff-only", input.branch], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer | string }).stderr;
+    const firstErrorLine = (Buffer.isBuffer(stderr) ? stderr.toString("utf8") : String(stderr ?? ""))
+      .split(/\r?\n/).find((line) => line.trim().length > 0) ?? "git merge failed";
+    return { landed: false, reason: `fast-forward failed: ${firstErrorLine}` };
+  }
+  try {
+    execFileSync("git", ["-C", input.target, "branch", "-d", input.branch], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch { /* landing succeeded; branch cleanup is best-effort */ }
+  return { landed: true, onto: input.baseBranch, reason: `Successfully landed on ${input.baseBranch}` };
 }
 
 // Everything that must hold before the first model call.
@@ -201,6 +291,12 @@ export function preflight(input: PreflightInput): Preflight {
   }
   if (input.dirty.length) {
     warnings.push(`${input.dirty.length} uncommitted path(s) are not part of the run, which starts from HEAD: ${input.dirty.slice(0, 5).join(", ")}`);
+  }
+  if (input.specPaths) {
+    const matches = uncommittedSpecPaths(input.dirty, input.specPaths);
+    if (matches.length) {
+      blocking.push(`uncommitted changes to ${input.specPaths.spec} relative to HEAD: ${matches.join(", ")}`);
+    }
   }
   return { checks, blocking, warnings };
 }
