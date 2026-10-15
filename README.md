@@ -115,9 +115,9 @@ The same `enabled: false` pattern works for `memoryGate`, `recap`, `explain`, `p
 
 ## Developing with pi
 
-Write a spec in the current template with its sibling `.tests/` directory. Ask pi to implement it with `implement_spec`: the pipeline runs as a tool call in the chat, streaming progress while the session waits. The terminal route remains available: from this repository, preview the run with `bin/pi-implement <spec> --dry-run`, then start it with `bin/pi-implement <spec>`. Review the resulting branch, run record and report before merging. If something later proves wrong, use `bin/pi-rework`.
+Write a spec in `docs/specs/` in the current template with its sibling `.tests/` directory. From anywhere inside that git repository, ask pi to implement it with `implement_spec`: the installed pi-build harness runs the delegated pipeline against the session's repository, streaming progress while the session waits. The terminal route remains available: preview with `<pi-build>/bin/pi-implement <spec> --repo <target> --dry-run`, then start with `<pi-build>/bin/pi-implement <spec> --repo <target>`. From inside the target, invoke the same harness executable without `--repo`. Review the resulting branch, run record and report before merging. If something later proves wrong, use `bin/pi-rework`.
 
-Stuck loops receive a nudge, then escalate through the retry ladder; token and cost budgets stop the turn instead of retrying. The 5-hour quota window pauses and resumes automatically. The weekly window holds for you; release it with `bin/pi-continue`. Use `bin/pi-implement <spec> --resume` to continue a held pipeline run.
+Stuck loops receive a nudge, then escalate through the retry ladder; token and cost budgets stop the turn instead of retrying. The 5-hour quota window pauses and resumes automatically. The weekly window holds for you; release it with `bin/pi-continue`. Use `<pi-build>/bin/pi-implement <spec> --repo <target> --resume` (or omit `--repo` from inside the target) to continue a held pipeline run.
 
 ## Map
 

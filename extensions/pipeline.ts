@@ -1,27 +1,21 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { implementArgs, testEnv } from "../lib/pipeline.ts";
+import { findHarnessRoot, implementArgs, STOP_AND_REPORT, targetRepo, testEnv } from "../lib/pipeline.ts";
 import { initialProgress, parseProgressLine, progressSummary, reduceProgress, renderProgress } from "../lib/progress.ts";
 
-function repositoryRoot(cwd: string): string | null {
-  let dir = resolve(cwd);
-  while (true) {
-    if (existsSync(join(dir, "bin", "pi-implement")) && existsSync(join(dir, "docs", "specs"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-export default async function pipelineExtension(pi: ExtensionAPI): Promise<void> {
+export default async function pipelineExtension(pi: ExtensionAPI, options: { harnessRoot?: string } = {}): Promise<void> {
+  const moduleFile = fileURLToPath(import.meta.url);
+  const harness = options.harnessRoot ?? findHarnessRoot(moduleFile);
   const { Type } = await import("typebox");
   pi.registerTool({
     name: "implement_spec",
     label: "Implement spec",
-    description: "Implement a spec from /docs/specs through the delegated pipeline — Sol plans, Luna implements each task, Sol integrates — streaming progress into the chat. Hands off on a branch and never writes main.",
+    description: "Implement a spec from /docs/specs through the delegated pipeline — Sol plans, Luna implements each task, Sol integrates — streaming progress into the chat. Hands off on a branch and never writes main. If it fails: " + STOP_AND_REPORT,
+    exposure: "direct",
     parameters: Type.Object({
       spec: Type.String({ description: "Spec ID, slug or path" }),
       planOnly: Type.Optional(Type.Boolean({ description: "Plan without implementing" })),
@@ -29,9 +23,14 @@ export default async function pipelineExtension(pi: ExtensionAPI): Promise<void>
     }),
     async execute(_id, params, signal, onUpdate, ctx) {
       let state = initialProgress(params.spec);
-      const root = repositoryRoot(ctx.cwd);
-      if (!root) return {
-        content: [{ type: "text" as const, text: `No pipeline runner found above ${ctx.cwd}.` }],
+      if (!harness || !existsSync(join(harness, "bin", "pi-implement"))) return {
+        content: [{ type: "text" as const, text: `No pipeline runner found ${harness ? `in ${harness}` : `above ${moduleFile}`}.\n${STOP_AND_REPORT}` }],
+        details: state,
+        isError: true,
+      };
+      const target = targetRepo(ctx.cwd);
+      if (!target) return {
+        content: [{ type: "text" as const, text: `implement_spec needs a git repository; ${ctx.cwd} is not inside one.\n${STOP_AND_REPORT}` }],
         details: state,
         isError: true,
       };
@@ -41,8 +40,8 @@ export default async function pipelineExtension(pi: ExtensionAPI): Promise<void>
       let spawnError: string | undefined;
       const code = await new Promise<number | null>((resolveExit) => {
         if (aborted) { resolveExit(130); return; }
-        const child = spawn(join(root, "bin", "pi-implement"), implementArgs(params), {
-          cwd: root,
+        const child = spawn(join(harness, "bin", "pi-implement"), implementArgs({ ...params, repo: target }), {
+          cwd: target,
           env: testEnv(process.env),
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -71,7 +70,7 @@ export default async function pipelineExtension(pi: ExtensionAPI): Promise<void>
         });
       });
 
-      const handedOff = !aborted && code === 0 && state.done?.ok === true && Boolean(state.done.branch);
+      const handedOff = !aborted && code === 0 && state.done?.ok === true && Boolean(state.done.branch) && Boolean(state.done.runRecord);
       let text = progressSummary(state);
       if (code === 75) text += "\nHeld by the quota gate: run `bin/pi-continue`, then call again with `resume: true`";
       else if (code === 2) {
@@ -81,6 +80,7 @@ export default async function pipelineExtension(pi: ExtensionAPI): Promise<void>
       } else if (aborted) text += "\nAborted; call again with `resume: true`.";
       else if (!handedOff && (spawnError || stderr.trim())) text += `\n${spawnError ?? stderr.trim()}`;
       if (!handedOff && !state.done && code !== 2 && code !== 75 && !aborted) text += `\nRunner exited ${code ?? "without a status"} without handoff.`;
+      if (!handedOff) text += `\n${STOP_AND_REPORT}`;
       return { content: [{ type: "text", text }], details: state, isError: !handedOff };
     },
     renderCall(args, theme) {
