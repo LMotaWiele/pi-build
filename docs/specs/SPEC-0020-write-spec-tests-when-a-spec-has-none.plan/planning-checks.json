@@ -1,0 +1,264 @@
+{
+  "startRevision": "42e61473b5e244a388ee0224ad8d20eafc4af3b6",
+  "initialStatus": [],
+  "node": "v24.18.0",
+  "contract": "/home/george-contis/src/pi-build/lib/plan.ts",
+  "verifyCount": 13,
+  "validatePlan": {
+    "ok": true,
+    "errors": []
+  },
+  "taskOrder": [
+    "S00-grounding",
+    "L01-decisions",
+    "L02-preflight",
+    "S03-runner",
+    "L04-progress",
+    "L05-summary",
+    "S06-readme",
+    "S07-extension-doc",
+    "S08-final-report"
+  ],
+  "baseline": [
+    {
+      "suite": "unit",
+      "command": "node --experimental-strip-types --test tests/audit-graders.test.ts tests/bounds-split.test.ts tests/explain-oneshot.test.ts tests/handoff.test.ts tests/hook-budget.test.ts tests/hook-trace.test.ts tests/interop.test.ts tests/jev-battery.test.ts tests/map-fixture.test.ts tests/markdown.test.ts tests/memory-owner.test.ts tests/parent-turn.test.ts tests/pi-rework.test.ts tests/pipeline-explain.test.ts tests/pipeline-tool.test.ts tests/quota-footer.test.ts tests/quota-gate-refresh.test.ts tests/read-guard-content.test.ts tests/read-guard.test.ts tests/router-tier.test.ts tests/routing-checkpoint.test.ts tests/run-plan-thinking.test.ts tests/score-ab.test.ts tests/settings-keys.test.ts tests/spec-index.test.ts tests/typecheck-hook.test.ts",
+      "exit": 1,
+      "counts": [
+        "ℹ tests 131",
+        "ℹ pass 128",
+        "ℹ fail 2",
+        "ℹ skipped 1"
+      ],
+      "failures": [
+        "✖ session recap predicate, explain gate, known.md, tier map",
+        "✖ tests/quota-gate-refresh.test.ts"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/unit.log"
+    },
+    {
+      "suite": "SPEC-0005-configure-production-harness.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0005-configure-production-harness.tests/rework.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 7",
+        "ℹ pass 7",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0005-configure-production-harness.tests.log"
+    },
+    {
+      "suite": "SPEC-0006-translate-specs-with-sol.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0006-translate-specs-with-sol.tests/batteries.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/conformance.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/plan.test.ts docs/specs/SPEC-0006-translate-specs-with-sol.tests/quota.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 39",
+        "ℹ pass 39",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0006-translate-specs-with-sol.tests.log"
+    },
+    {
+      "suite": "SPEC-0009-migrate-to-gpt6.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0009-migrate-to-gpt6.tests/models.test.ts docs/specs/SPEC-0009-migrate-to-gpt6.tests/tiers.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 13",
+        "ℹ pass 13",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0009-migrate-to-gpt6.tests.log"
+    },
+    {
+      "suite": "SPEC-0010-make-pi-ready-for-spec-development.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/bounds.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/continuation.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/index.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/pipeline.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/quota-action.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/specs.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/stuck.test.ts docs/specs/SPEC-0010-make-pi-ready-for-spec-development.tests/verify-count.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 42",
+        "ℹ pass 42",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0010-make-pi-ready-for-spec-development.tests.log"
+    },
+    {
+      "suite": "SPEC-0011-make-explain-a-learning-aid-again.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0011-make-explain-a-learning-aid-again.tests/explain.test.ts docs/specs/SPEC-0011-make-explain-a-learning-aid-again.tests/layout.test.ts docs/specs/SPEC-0011-make-explain-a-learning-aid-again.tests/project-rules.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 23",
+        "ℹ pass 23",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0011-make-explain-a-learning-aid-again.tests.log"
+    },
+    {
+      "suite": "SPEC-0014-complete-the-codebase-map.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0014-complete-the-codebase-map.tests/pipeline-roles.test.ts docs/specs/SPEC-0014-complete-the-codebase-map.tests/telemetry-attribution.test.ts docs/specs/SPEC-0014-complete-the-codebase-map.tests/writeback.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 11",
+        "ℹ pass 11",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0014-complete-the-codebase-map.tests.log"
+    },
+    {
+      "suite": "SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests/host-config.test.ts docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests/pipeline-hygiene.test.ts docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests/progress.test.ts docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests/records.test.ts docs/specs/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests/tiers.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 22",
+        "ℹ pass 22",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests.log"
+    },
+    {
+      "suite": "SPEC-0018-run-implement-spec-from-any-repo.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0018-run-implement-spec-from-any-repo.tests/pipeline-lib.test.ts docs/specs/SPEC-0018-run-implement-spec-from-any-repo.tests/runner.test.ts docs/specs/SPEC-0018-run-implement-spec-from-any-repo.tests/specs.test.ts docs/specs/SPEC-0018-run-implement-spec-from-any-repo.tests/tool.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 26",
+        "ℹ pass 26",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0018-run-implement-spec-from-any-repo.tests.log"
+    },
+    {
+      "suite": "SPEC-0019-land-runs-and-summarize-every-exit.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/install.test.ts docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/land.test.ts docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/preflight-gate.test.ts docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/progress-tool.test.ts docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/runner.test.ts docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.tests/summary.test.ts",
+      "exit": 0,
+      "counts": [
+        "ℹ tests 29",
+        "ℹ pass 29",
+        "ℹ fail 0",
+        "ℹ skipped 0"
+      ],
+      "failures": [],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0019-land-runs-and-summarize-every-exit.tests.log"
+    },
+    {
+      "suite": "SPEC-0020-write-spec-tests-when-a-spec-has-none.tests",
+      "command": "node --experimental-strip-types --test docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.tests/gate.test.ts docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.tests/preflight-summary.test.ts docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.tests/runner.test.ts",
+      "exit": 1,
+      "counts": [
+        "ℹ tests 8",
+        "ℹ pass 0",
+        "ℹ fail 8",
+        "ℹ skipped 0"
+      ],
+      "failures": [
+        "✖ docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.tests/gate.test.ts",
+        "✖ a spec without tests no longer blocks when the pipeline will write them; it still blocks otherwise",
+        "✖ the summary says who wrote the spec tests, which failed before implementation and which checks are manual",
+        "✖ a downloaded spec without tests is installed, the test writer runs first, and its tests are frozen in their own commit",
+        "✖ tests that pass before implementation, or do not parse, go back to the writer with the gate's errors",
+        "✖ after three rejected rounds the run stops before planning, with a summary",
+        "✖ a spec that ships its own tests skips the writer",
+        "✖ a dry run of a spec without tests says who will write them instead of refusing"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/SPEC-0020-write-spec-tests-when-a-spec-has-none.tests.log"
+    },
+    {
+      "suite": "spec-python",
+      "command": "uv run --project tools/map pytest -q docs/specs/SPEC-0014-complete-the-codebase-map.tests/test_map_views.py",
+      "exit": 0,
+      "output": "Using CPython 3.12.13\nCreating virtual environment at: tools/map/.venv\n   Building map-build @ file:///home/george-contis/var/pipeline-runs/SPEC-0020-write-spec-tests-when-a-spec-has-none/2026-10-15T18-50-50-747Z/branch/tools/map\n      Built map-build @ file:///home/george-contis/var/pipeline-runs/SPEC-0020-write-spec-tests-when-a-spec-has-none/2026-10-15T18-50-50-747Z/branch/tools/map\nInstalled 11 packages in 4ms\n.........                                                                [100%]\n9 passed in 0.28s\n",
+      "log": "/tmp/spec0020-planning-nuurl0z2/python.log",
+      "counts": [],
+      "failures": []
+    }
+  ],
+  "acceptance": [
+    {
+      "task": "L01-decisions",
+      "test": "docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/decisions.test.ts",
+      "command": "node --experimental-strip-types --test --test-reporter=tap docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/decisions.test.ts",
+      "undeclaredImports": [],
+      "syntaxExit": 0,
+      "exit": 1,
+      "failures": [
+        "not ok 1 - docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/decisions.test.ts",
+        "# tests 1",
+        "# pass 0",
+        "# fail 1",
+        "# skipped 0"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/L01-decisions.log"
+    },
+    {
+      "task": "L02-preflight",
+      "test": "docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/preflight.test.ts",
+      "command": "node --experimental-strip-types --test --test-reporter=tap docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/preflight.test.ts",
+      "undeclaredImports": [],
+      "syntaxExit": 0,
+      "exit": 1,
+      "failures": [
+        "not ok 1 - writeTests opts out only of the missing-directory blocker and defaults to old behaviour",
+        "not ok 2 - test generation does not bypass malformed verification, quota, Python, dirty-spec blockers or warnings",
+        "# tests 2",
+        "# pass 0",
+        "# fail 2",
+        "# skipped 0"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/L02-preflight.log"
+    },
+    {
+      "task": "L04-progress",
+      "test": "docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/progress.test.ts",
+      "command": "node --experimental-strip-types --test --test-reporter=tap docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/progress.test.ts",
+      "undeclaredImports": [],
+      "syntaxExit": 0,
+      "exit": 1,
+      "failures": [
+        "not ok 1 - spec-tests stage survives parsing, reduction and both progress renderings",
+        "# tests 2",
+        "# pass 1",
+        "# fail 1",
+        "# skipped 0"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/L04-progress.log"
+    },
+    {
+      "task": "L05-summary",
+      "test": "docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/summary.test.ts",
+      "command": "node --experimental-strip-types --test --test-reporter=tap docs/specs/SPEC-0020-write-spec-tests-when-a-spec-has-none.plan/summary.test.ts",
+      "undeclaredImports": [],
+      "syntaxExit": 0,
+      "exit": 1,
+      "failures": [
+        "not ok 1 - generated tests are labelled with writer, rounds, per-file before status and manual reasons",
+        "not ok 2 - unfinished, supplied and legacy runs have explicit fallback status without inventing test evidence",
+        "not ok 3 - spec-tests evidence wins over metadata while existing gate, tasks and grade sections remain intact",
+        "# tests 3",
+        "# pass 0",
+        "# fail 3",
+        "# skipped 0"
+      ],
+      "log": "/tmp/spec0020-planning-nuurl0z2/L05-summary.log"
+    }
+  ],
+  "implementationChanges": false,
+  "planningRepairs": [
+    {
+      "issue": "undeclaredImports lexical scan matched a named import inside missing-module parse fixtures",
+      "resolution": "Use side-effect missing-module imports in fixture strings; no fake interface declaration or validator change."
+    }
+  ]
+}
