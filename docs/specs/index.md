@@ -23,3 +23,4 @@ Implemented by is filled when a spec is implemented, from its run record.
 | 0017 | SPEC-0017: Report the typecheck hook's real compiler status | implemented | Grok Build | 2026-10-06 | `docs/specs/SPEC-NNNN-fix-typecheck-hook-status.md` |
 | 0018 | SPEC-0018: Run implement_spec against any repository | implemented | pi pipeline | 2026-10-15 | `docs/specs/SPEC-NNNN-run-implement-spec-from-any-repo.md` |
 | 0019 | SPEC-0019: Install specs from a download, land runs on your branch, and summarize every exit | implemented | pi pipeline | 2026-10-15 | — |
+| 0020 | SPEC-0020: Write a spec's tests in the pipeline when it ships none | ready | — | 2026-10-15 | — |
