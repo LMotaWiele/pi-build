@@ -21,3 +21,4 @@ Implemented by is filled when a spec is implemented, from its run record.
 | 0015 | SPEC-0015: Move to GPT-6.1 Sol, fix the pipeline's loose ends, and run the pipeline from the chat | implemented | pi pipeline | 2026-09-30 | — |
 | 0016 | SPEC-0016: Compare read-guard content before suppressing re-reads | implemented | Grok Build | 2026-10-06 | `docs/specs/SPEC-NNNN-compare-read-guard-content.md` |
 | 0017 | SPEC-0017: Report the typecheck hook's real compiler status | implemented | Grok Build | 2026-10-06 | `docs/specs/SPEC-NNNN-fix-typecheck-hook-status.md` |
+| 0018 | SPEC-0018: Run implement_spec against any repository | ready | — | 2026-10-15 | `docs/specs/SPEC-NNNN-run-implement-spec-from-any-repo.md` |
