@@ -173,6 +173,7 @@ export interface PreflightInput {
   specPaths?: { spec: string; tests: string };
   specText: string;
   hasTestsDir: boolean;
+  writeTests?: boolean;
   held: boolean;
   dirty: string[]; // uncommitted paths in the repository
   testFiles?: string[];
@@ -284,7 +285,7 @@ export function preflight(input: PreflightInput): Preflight {
   } catch (err) {
     blocking.push(`spec: ${(err as Error).message}`);
   }
-  if (!input.hasTestsDir) blocking.push("spec has no .tests/ directory: the pipeline grades against the spec's tests");
+  if (!input.hasTestsDir && !input.writeTests) blocking.push("spec has no .tests/ directory: the pipeline grades against the spec's tests");
   if (input.held) blocking.push("quota hold in place: run bin/pi-continue first");
   if (input.pythonProject === null && (input.testFiles ?? []).some((file) => PY_TEST.test(file))) {
     blocking.push("Python tests but no Python project; add .pi/pipeline.json with pythonProject");
