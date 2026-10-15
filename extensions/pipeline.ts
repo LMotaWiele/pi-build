@@ -14,10 +14,10 @@ export default async function pipelineExtension(pi: ExtensionAPI, options: { har
   pi.registerTool({
     name: "implement_spec",
     label: "Implement spec",
-    description: "Implement a spec from /docs/specs through the delegated pipeline — Sol plans, Luna implements each task, Sol integrates — streaming progress into the chat. Hands off on a branch and never writes main. If it fails: " + STOP_AND_REPORT,
+    description: "Implement a spec from /docs/specs through the delegated pipeline — Sol plans, Luna implements each task, Sol integrates — streaming progress into the chat. A passing run fast-forwards the branch you started on if it has not moved; otherwise it leaves a review branch. If it fails: " + STOP_AND_REPORT,
     exposure: "direct",
     parameters: Type.Object({
-      spec: Type.String({ description: "Spec ID, slug or path" }),
+      spec: Type.String({ description: "Spec ID, slug or path, or a downloaded .md or .zip to install and then run" }),
       planOnly: Type.Optional(Type.Boolean({ description: "Plan without implementing" })),
       resume: Type.Optional(Type.Boolean({ description: "Resume a held or interrupted run" })),
     }),
@@ -70,18 +70,21 @@ export default async function pipelineExtension(pi: ExtensionAPI, options: { har
         });
       });
 
-      const handedOff = !aborted && code === 0 && state.done?.ok === true && Boolean(state.done.branch) && Boolean(state.done.runRecord);
+      const handedOff = !aborted && code === 0 && state.done?.ok === true && Boolean(state.done.branch || state.done.landed) && Boolean(state.done.runRecord);
+      const planned = Boolean(params.planOnly) && !aborted && code === 0 && state.done?.ok === true && Boolean(state.done.branch) && !state.done.runRecord;
+      const succeeded = handedOff || planned;
       let text = progressSummary(state);
+      if (planned) text += `\nPlan gate passed on \`${state.done!.branch}\`. To implement it, call implement_spec again with resume: true.`;
       if (code === 75) text += "\nHeld by the quota gate: run `bin/pi-continue`, then call again with `resume: true`";
       else if (code === 2) {
         // Preflight can fail before it has emitted a done event; preserve the runner's diagnostics.
         const reasons = state.done?.summary || stderr.trim() || "Preflight blocked.";
         if (!text.includes(reasons)) text += `\nPreflight: ${reasons}`;
       } else if (aborted) text += "\nAborted; call again with `resume: true`.";
-      else if (!handedOff && (spawnError || stderr.trim())) text += `\n${spawnError ?? stderr.trim()}`;
-      if (!handedOff && !state.done && code !== 2 && code !== 75 && !aborted) text += `\nRunner exited ${code ?? "without a status"} without handoff.`;
-      if (!handedOff) text += `\n${STOP_AND_REPORT}`;
-      return { content: [{ type: "text", text }], details: state, isError: !handedOff };
+      else if (!succeeded && (spawnError || stderr.trim())) text += `\n${spawnError ?? stderr.trim()}`;
+      if (!succeeded && !state.done && code !== 2 && code !== 75 && !aborted) text += `\nRunner exited ${code ?? "without a status"} without handoff.`;
+      if (!succeeded) text += `\n${STOP_AND_REPORT}`;
+      return { content: [{ type: "text", text }], details: state, isError: !succeeded };
     },
     renderCall(args, theme) {
       return new Text(theme.fg("toolTitle", theme.bold("implement_spec ")) + theme.fg("accent", args.spec), 0, 0);

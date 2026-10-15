@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -13,7 +13,7 @@ export function buildSummary(input: {
   };
   const metadata = readJson("pipeline.json");
   const spec = typeof metadata?.spec === "string" ? metadata.spec : "missing";
-  const id = spec.match(/SPEC-\d+/)?.[0] ?? "missing";
+  const id = spec.match(/SPEC-[0-9A-Za-z]+/)?.[0] ?? "missing";
 
   lines.push(`# Run summary: ${id}`, "", "## Status", `**${!outcome.ok ? "Failed" : outcome.landed ? `Landed on ${outcome.landed}` : "Handed off"}**`, `Stage: ${outcome.stage || "missing"}`, `Reason: ${outcome.reason || "missing"}`);
   const keptBranch = !outcome.landed ? (outcome.branch || metadata?.branch) : undefined;

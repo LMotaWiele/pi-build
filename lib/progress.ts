@@ -163,7 +163,7 @@ export function renderProgress(state: ProgressState, expanded: boolean): string[
   if (!expanded) {
     const latest = state.done?.summary ?? state.notices.at(-1) ?? state.current.recent.at(-1);
     const lines = latest ? [headline, latest] : [headline];
-    if (state.done?.landed !== undefined) lines.push(`Landed on ${state.done.landed}`);
+    if (state.done?.landed !== undefined) lines.push(state.done.ok ? `Landed on ${state.done.landed}` : "Failed");
     if (state.done?.summaryPath) lines.push(`Summary: ${state.done.summaryPath}`);
     return lines;
   }
@@ -171,7 +171,7 @@ export function renderProgress(state: ProgressState, expanded: boolean): string[
     ...state.tasks.map((task) => `${task.id} ${task.title} (${task.model}) — ${task.status}${task.rounds === undefined ? "" : `, ${task.rounds} rounds`}${task.result ? `: ${task.result}` : ""}`),
     ...state.current.recent,
     ...state.notices.map((notice) => `Notice: ${notice}`),
-    ...(state.done ? [state.done.landed !== undefined ? `Landed on ${state.done.landed}` : state.done.ok ? "Handed off" : "Failed",
+    ...(state.done ? [!state.done.ok ? "Failed" : state.done.landed !== undefined ? `Landed on ${state.done.landed}` : "Handed off",
       ...(state.done.landed === undefined && state.done.branch ? [`Branch: ${state.done.branch}`] : []),
       ...(state.done.runRecord ? [`Run record: ${state.done.runRecord}`] : []),
       ...(state.done.summaryPath ? [`Summary: ${state.done.summaryPath}`] : [])] : []),
@@ -179,7 +179,7 @@ export function renderProgress(state: ProgressState, expanded: boolean): string[
 }
 
 export function progressSummary(state: ProgressState): string {
-  const status = state.done ? (state.done.landed !== undefined ? `Landed on ${state.done.landed}` : state.done.ok ? "Handed off" : "Failed") : `Running ${state.stage}`;
+  const status = state.done ? (!state.done.ok ? "Failed" : state.done.landed !== undefined ? `Landed on ${state.done.landed}` : "Handed off") : `Running ${state.stage}`;
   const passed = state.tasks.filter((task) => task.status === "pass").length;
   const cost = state.cost;
   return [

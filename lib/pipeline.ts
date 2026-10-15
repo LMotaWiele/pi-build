@@ -190,9 +190,27 @@ export function uncommittedSpecPaths(dirty: string[], paths: { spec: string; tes
   for (const line of dirty) {
     const status = line.slice(0, 2);
     const rawPath = line.slice(3);
-    const path = status.includes("R") && rawPath.includes(" -> ")
-      ? rawPath.slice(rawPath.indexOf(" -> ") + 4)
-      : rawPath;
+    let destination = 0;
+    if (status.includes("R")) {
+      let quoted = false;
+      for (let i = 0; i < rawPath.length; i++) {
+        if (quoted && rawPath[i] === "\\") { i++; continue; }
+        if (rawPath[i] === '"') quoted = !quoted;
+        else if (!quoted && rawPath.startsWith(" -> ", i)) destination = i + 4;
+      }
+    }
+    let path = rawPath.slice(destination);
+    // Git C-quotes paths with spaces/control characters, and may octal-escape
+    // UTF-8 bytes. Decode before checking the tests-directory boundary.
+    if (path.startsWith('"') && path.endsWith('"')) {
+      const chunks: Buffer[] = [];
+      const escapes: Record<string, string> = { a: "\u0007", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r" };
+      for (const part of path.slice(1, -1).matchAll(/\\([0-7]{1,3}|.)|([^\\]+)/g)) {
+        chunks.push(part[2] !== undefined ? Buffer.from(part[2]) : /^[0-7]+$/.test(part[1])
+          ? Buffer.from([parseInt(part[1], 8)]) : Buffer.from(escapes[part[1]] ?? part[1]));
+      }
+      path = Buffer.concat(chunks).toString("utf8");
+    }
     const exact = path === paths.spec || path === paths.tests || path === `${paths.tests}/`;
     const descendant = path.startsWith(`${paths.tests}/`);
     const untrackedDirectory = status === "??" && path.endsWith("/") &&
