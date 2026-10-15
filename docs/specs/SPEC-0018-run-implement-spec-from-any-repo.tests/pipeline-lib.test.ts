@@ -89,5 +89,5 @@ test("the planner is pointed at the harness's Plan interface by absolute path", 
 });
 
 test("the stop-and-report sentence is fixed", () => {
-  assert.equal(STOP_AND_REPORT, "Do not implement this spec with other tools. Report this result to the user and wait for instructions.");
+  assert.equal(STOP_AND_REPORT, "Report this result to the user and ask how to proceed. Implement the spec another way only if the user says so.");
 });

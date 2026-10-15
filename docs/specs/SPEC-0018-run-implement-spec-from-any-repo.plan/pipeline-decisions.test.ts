@@ -16,7 +16,7 @@ function temporary(t: { after: (fn: () => void) => void }): string {
 }
 
 const SPEC = "# S\n\n## 8. Verification\n| Outcome | Change | Check ID: condition |\n|---|---|---|\n| O1 | §6.2 | V1: works |\n\n## 9. Stop\n";
-const STOP = "Do not implement this spec with other tools. Report this result to the user and wait for instructions.";
+const STOP = "Report this result to the user and ask how to proceed. Implement the spec another way only if the user says so.";
 
 test("STOP_AND_REPORT is the exact fixed sentence", () => {
   assert.equal(STOP_AND_REPORT, STOP);

@@ -7,7 +7,7 @@ import { countVerifyChecks } from "./plan.ts";
 
 const TEST_ENV_KEYS = ["PI_BUILD_PIPELINE", "PI_BUILD_SUBAGENT_ROLE", "PI_BUILD_TELEMETRY_DB"] as const;
 
-export const STOP_AND_REPORT = "Do not implement this spec with other tools. Report this result to the user and wait for instructions.";
+export const STOP_AND_REPORT = "Report this result to the user and ask how to proceed. Implement the spec another way only if the user says so.";
 
 export function findHarnessRoot(fromPath: string): string | null {
   try {
