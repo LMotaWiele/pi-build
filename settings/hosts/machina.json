@@ -20,7 +20,7 @@
     "git:github.com/nicobailon/pi-web-access@v0.30.0",
     "git:github.com/mjakl/pi-subagent@ce26a686f2571188d2e2b4d586e15a82606a7b72",
     "npm:pi-context-usage",
-    "npm:pi-smart-router@0.8.0"
+    "../../.local/share/make-sense-code/app/0.1.0"
   ],
   "webAccess": {
     "workflow": "none",
@@ -91,6 +91,6 @@
     "plannerThinking": "high",
     "editorThinking": "medium"
   },
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "1.2.0",
   "theme": "dark"
 }

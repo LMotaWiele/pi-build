@@ -43,10 +43,6 @@ The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`).
 
 `extensions/pipeline.ts` owns the `implement_spec` tool and subscribes to no events.
 
-## Map
-
-`extensions/map.ts` writes no section key and rewrites no context or tool result, so it is outside the invalidation count. It reads `tool_result` inputs for paths and, on `agent_end`, spawns `tools/map` without awaiting it when a path fell inside the project. One build runs at a time per process; the explain and recap one-shots do not load it.
-
 ## Invalidation budget
 
 Maximum prefix invalidation points per turn: 3

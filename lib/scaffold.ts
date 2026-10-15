@@ -96,6 +96,7 @@ const COPIED: { rel: string; template: string }[] = [
   { rel: "AGENTS.md", template: "AGENTS.md" },
   { rel: ".agent/notes/INDEX.md", template: "INDEX.md" },
   { rel: ".agent/notes/README.md", template: "notes/README.md" },
+  { rel: "docs/specs/index.md", template: "docs/specs/index.md" },
 ];
 
 export interface ScaffoldResult {

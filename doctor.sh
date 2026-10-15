@@ -78,7 +78,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     jq) command -v jq >/dev/null || fail "jq missing"; ok "jq $(jq --version)" ;;
     git) command -v git >/dev/null || fail "git missing"; ok "git $(git --version)" ;;
     uv)
-      # Optional: the map (extensions/map.ts, tools/map) stays off without it.
+      # Optional: the map tests (tools/map) are skipped without it.
       if command -v uv >/dev/null; then ok "uv $(uv --version)"; else echo "skipped: uv not installed"; fi
       ;;
     pi)

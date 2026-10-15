@@ -264,6 +264,7 @@ test("scaffold never overwrites, stays neutral, and round-trips a hand edit", ()
   const first = scaffoldProject(dir);
   assert.ok(first.created.includes("AGENTS.md"));
   assert.ok(first.created.includes(".agent/notes/INDEX.md"));
+  assert.ok(first.created.includes("docs/specs/index.md"));
   assert.equal(spawnSync("grep", ["-rE", "note_open|memoryGate|\\.pi/|pi-build", path.join(dir, ".agent")], { encoding: "utf8" }).status, 1);
 
   const stamped = path.join(dir, "AGENTS.md");
@@ -271,10 +272,12 @@ test("scaffold never overwrites, stays neutral, and round-trips a hand edit", ()
   fs.writeFileSync(path.join(dir, ".agent/notes/INDEX.md"), "custom index\n");
   fs.writeFileSync(path.join(dir, ".agent/notes/README.md"), "custom readme\n");
   fs.writeFileSync(path.join(dir, ".agent/skills/notes-protocol/SKILL.md"), "custom skill\n");
+  fs.writeFileSync(path.join(dir, "docs/specs/index.md"), "custom specs\n");
   const second = scaffoldProject(dir);
   assert.deepEqual(second.created, []);
   assert.equal(fs.readFileSync(stamped, "utf8"), "custom agents\n");
   assert.equal(fs.readFileSync(path.join(dir, ".agent/notes/INDEX.md"), "utf8"), "custom index\n");
+  assert.equal(fs.readFileSync(path.join(dir, "docs/specs/index.md"), "utf8"), "custom specs\n");
 
   const fresh = tempDir();
   scaffoldProject(fresh);

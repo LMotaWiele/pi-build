@@ -1,11 +1,10 @@
-// Pipeline sessions are labelled, found, and fed to the map; the map does not run inside them.
+// Pipeline sessions are labelled and their telemetry databases are found.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { childEnv, pipelineRunRoot, pipelineTelemetryDbs } from "../../../lib/pipeline.ts";
-import { mapCommand, shouldRunMap } from "../../../extensions/map.ts";
 
 test("every pipeline child is marked as pipeline work, with its role and its database", () => {
   for (const role of ["planner", "editor", "integration"] as const) {
@@ -33,18 +32,4 @@ test("every pipeline telemetry database under the run root is found, in a stable
   const found = pipelineTelemetryDbs(root).map((p) => p.slice(run.length + 1));
   assert.deepEqual(found, ["integration-telemetry.db", "planner-telemetry.db", "tasks/T1/telemetry.db", "tasks/T2/telemetry.db"]);
   assert.deepEqual(pipelineTelemetryDbs(join(root, "missing")), []);
-});
-
-const settings = { uv: "uv", toolDir: "/tool", outDir: ".agent/map", windowDays: 30 } as any;
-
-test("the map reads pipeline databases after the main one; existing calls are unchanged", () => {
-  const plain = mapCommand(settings, { root: "/p", telemetry: "/main.db" });
-  assert.deepEqual(plain.args.filter((a, i, all) => all[i - 1] === "--telemetry"), ["/main.db"]);
-  const withRuns = mapCommand(settings, { root: "/p", telemetry: "/main.db", extraTelemetry: ["/r/a.db", "/r/b.db"] });
-  assert.deepEqual(withRuns.args.filter((a, i, all) => all[i - 1] === "--telemetry"), ["/main.db", "/r/a.db", "/r/b.db"]);
-});
-
-test("the map does not run inside a pipeline child", () => {
-  assert.equal(shouldRunMap({}), true);
-  assert.equal(shouldRunMap({ PI_BUILD_PIPELINE: "1" }), false);
 });

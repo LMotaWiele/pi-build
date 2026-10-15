@@ -18,6 +18,10 @@ When a spec's final acceptance passes in an interactive session, set its status 
 
 This session sets its model with setModel before the first inference of a turn. Do not switch models in the middle of a turn. The resolved tier map is injected from the host file. Do not copy model ids into this file.
 
+## Shared VGA / GPU coordination
+
+Before any GPU-intensive task, read `/home/george-contis/VGA queue.txt` and follow its current instructions. GPU usage is shared with other agents on this machine. Record a timestamped entry before starting, with an estimated duration when possible, and record another entry when finished. If the GPU is busy, record a queued request and watch the file until the current user records completion before starting. Preserve other agents' entries.
+
 ## Approvals
 
 Do not ask for approval. Telemetry is the record. The explanation written after an edit turn is the review.

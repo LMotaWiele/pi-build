@@ -91,7 +91,7 @@ pi
 
 Global instructions from this repo's `agent/AGENTS.md` apply in every project. A project's own `AGENTS.md` stacks under that file.
 
-**Notes.** On session start the harness checks the active project, which is the nearest directory at or above the working directory that contains `AGENTS.md` (or `.agent/` if there is no `AGENTS.md`). Missing memory files are created from `templates/agent-memory/`. An existing file is left untouched. `memory_bootstrap` does the same thing when you call it. `memoryGate.autoScaffold: false` turns the automatic copy off. `.agent/` describes the behaviour (read the index, then one note) and does not name a pi tool. Pi hears the tool names from a prompt section injected at session start. The per-project skill is `.agent/skills/notes-protocol/SKILL.md`. A legacy index, with a bullet queue and `## Pre-committed next`, keeps working. `node scripts/migrate-notes.js <project>` writes `INDEX.v1.md` and note siblings for you to review; a session never renames them. You read `.agent/explain/` when you want the walkthrough of an edit. `.grok/` beside `.pi/` is expected and left alone.
+**Notes.** On session start the harness checks the active project, which is the nearest directory at or above the working directory that contains `AGENTS.md` (or `.agent/` if there is no `AGENTS.md`). Missing memory files are created from `templates/agent-memory/`, and so is `docs/specs/index.md` when it is absent. An existing file is left untouched. `memory_bootstrap` does the same thing when you call it. `memoryGate.autoScaffold: false` turns the automatic copy off. `.agent/` describes the behaviour (read the index, then one note) and does not name a pi tool. Pi hears the tool names from a prompt section injected at session start. The per-project skill is `.agent/skills/notes-protocol/SKILL.md`. A legacy index, with a bullet queue and `## Pre-committed next`, keeps working. `node scripts/migrate-notes.js <project>` writes `INDEX.v1.md` and note siblings for you to review; a session never renames them. You read `.agent/explain/` when you want the walkthrough of an edit. `.grok/` beside `.pi/` is expected and left alone.
 
 **Plan mode.** `/plan` or Ctrl+Alt+P toggles read-only exploration. Write tools come back when you leave the plan or execute it.
 
@@ -121,7 +121,7 @@ Stuck loops receive a nudge, then escalate through the retry ladder; token and c
 
 ## Map
 
-`extensions/map.ts` rebuilds a map of the project after every turn that read or wrote a file inside it. The build is `tools/map`, a Python tool run with [uv](https://docs.astral.sh/uv/); the extension never waits for it, and a second request during a build runs once more when the first exits. Without `uv` on `PATH` the extension logs one warning and stays off.
+The automatic map extension is not installed. Pi does not build a map after a turn, and there is no `/map` command. `tools/map` is a Python tool you run yourself with [uv](https://docs.astral.sh/uv/).
 
 The page is `.agent/map/index.html`: one self-contained file that opens from disk.
 
@@ -130,12 +130,10 @@ The page is `.agent/map/index.html`: one self-contained file that opens from dis
 - **Data model**: types, SQLite tables, and file stores, their relations, and which code reads or writes them.
 
 ```bash
-/map          # build now and print the page path
-/map open     # build and open it
 uv run --project tools/map python -m map_build --repo . --telemetry ~/.pi/agent/telemetry.db
 ```
 
-`.agent/map/` holds a `.gitignore` of `*`, so the map is never committed. A project can declare its stores and query rules in `.map/project.toml` and `.map/rules/`; this repository's are the example. Settings block `map`: `enabled`, `outDir` (default `.agent/map`), `windowDays` (7), `uv` (`"uv"`), `toolDir` (default `tools/map` beside the extension). `tools/map/SPEC.md` is the contract.
+`.agent/map/` holds a `.gitignore` of `*`, so the map is never committed. A project can declare its stores and query rules in `.map/project.toml` and `.map/rules/`; this repository's are the example. `tools/map/SPEC.md` is the contract.
 
 ## Check the install
 
@@ -175,7 +173,7 @@ sqlite3 ~/.pi/agent/telemetry.db < scripts/report.sql
 AGENTS.md                  this repo's contract
 agent/AGENTS.md            global instructions, symlinked into ~/.pi/agent/
 agent/models.json          the author's context window and prompt-cache TTL
-extensions/                memory, read guard, bounds, recap, explain, plan mode, map
+extensions/                memory, read guard, bounds, recap, explain, plan mode
 lib/                       markdown, scaffold, skill, telemetry
 tools/map/                 the map build (Python, uv); SPEC.md is its contract
 .map/                      this repo's map stores and query rules

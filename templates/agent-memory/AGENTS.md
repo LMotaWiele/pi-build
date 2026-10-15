@@ -15,7 +15,7 @@ Agent-agnostic layout and conventions. Stacks on `~/.pi/agent/AGENTS.md` (global
 ```
 project/
 ├── AGENTS.md              # this file
-├── README.md              # human: what + how to run
+├── README.md              # human: what this is + how to run
 ├── pyproject.toml         # Python project (init: >=3.12, hatchling)
 ├── .venv/                 # local venv (init: Python 3.12; gitignored)
 ├── CHANGELOG.md           # optional
@@ -24,7 +24,7 @@ project/
 ├── scripts/               # runnable one-offs — never imported by src/
 ├── notebooks/             # demos/experiments — not production logic
 ├── docs/design/           # ADRs / design ("why") — sealed authority
-├── docs/                  # other topics
+├── docs/                  # other topics by folder
 ├── bench/                 # optional evals (runs|analysis|ref)
 ├── .agent/skills/         # shared SKILL.md (harness-agnostic)
 ├── .agent/notes/          # durable findings — INDEX.md first (see rule 7)
@@ -32,7 +32,7 @@ project/
 ├── .pi/settings.json      # harness wiring: project overrides only
 ├── .pi/agents/            # subagent definitions (tier → pinned model)
 ├── .pi/extensions/        # project-local extensions, if any
-└── .mcp.json              # optional extra MCP only (not CRG)
+└── .mcp.json              # optional extra MCP
 ```
 
 Rationale for buckets: `docs/design/layout.md` (read on demand).
@@ -51,7 +51,6 @@ Harness design: `docs/design/pi-setup.md`.
 9. Small focused edits; match neighbors; no unsolicited docs; verify against source not README alone.
 10. Commit your own work, with messages naming the task. Never push, force-push, or rewrite commits you didn't make. No production logic in scripts/notebooks/notes.
 11. **Explanations are not notes.** `.agent/explain/` is written by the harness only. Do not write there. Record progress on a spec in its run record; for other work, in the commit message. Promote a finding to `.agent/notes/*-gotchas.md` only when the trap will recur across tasks in this repo.
-12. CRG MCP is **global** (`~/.pi/agent/settings.json`) — no project `.mcp.json` for the graph. Build once: `code-review-graph build --repo .`
 
 ## New module
 
