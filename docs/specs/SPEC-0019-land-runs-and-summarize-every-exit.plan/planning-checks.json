@@ -1,0 +1,128 @@
+{
+  "phase": "planning only; no implementation edits",
+  "startRevision": "d78058484227a8f49c57a2b9242dc933b04706fe",
+  "preExistingChanges": [],
+  "legacyNotesIndexPresent": false,
+  "grounding": [
+    { "row": "Preflight inputs", "expected": "specText, hasTestsDir, held, dirty, optional testFiles/pythonProject; porcelain status lines", "actual": "Interface matches; runner's shared git helper trims output, so first-line leading status whitespace must be preserved when adding raw porcelain matching", "evidence": "lib/pipeline.ts PreflightInput; bin/pi-implement git/dirty definitions" },
+    { "row": "Preflight reads", "expected": "target working copy spec and tests", "actual": "matches", "evidence": "bin/pi-implement preflight call" },
+    { "row": "Gate loop", "expected": "three rounds, repair after first two for any error", "actual": "matches", "evidence": "bin/pi-implement repair loop" },
+    { "row": "exit/finish", "expected": "exit -> finish(false,text) -> one done", "actual": "matches", "evidence": "bin/pi-implement done guard/finish/exit" },
+    { "row": "pipeline.json", "expected": "branch, spec, stamp, startedAt", "actual": "matches; no base/baseBranch yet", "evidence": "bin/pi-implement write(metaPath)" },
+    { "row": "Handoff end", "expected": "remove worktrees, finish true with branch/runRecord", "actual": "matches in progress mode; terminal currently only console.log", "evidence": "bin/pi-implement final lines" },
+    { "row": "done event", "expected": "ok, optional branch/runRecord/summary validated", "actual": "matches", "evidence": "lib/progress.ts ProgressEvent/parseProgressLine" },
+    { "row": "Tool success", "expected": "branch plus runRecord; plan-only treated as error", "actual": "matches", "evidence": "extensions/pipeline.ts handedOff" },
+    { "row": "Tool description", "expected": "Hands off on a branch and never writes main", "actual": "matches", "evidence": "extensions/pipeline.ts description" },
+    { "row": "Telemetry columns", "expected": "cost_usd, prompt_tokens, completion_tokens, subagent_role", "actual": "matches repository SCHEMA and protected summary fixture; uploaded run databases not supplied for separate inspection", "evidence": "lib/telemetry.ts SCHEMA; protected summary.test.ts telemetry fixture" },
+    { "row": "node:sqlite", "expected": "available without a flag", "actual": "v24.18.0, DatabaseSync opened/closed :memory: successfully", "command": "node --input-type=module -e 'import { DatabaseSync } from \"node:sqlite\"; const db = new DatabaseSync(\":memory:\"); db.close();'", "exitCode": 0 },
+    { "row": "python3 zipfile", "expected": "on PATH", "actual": "available", "command": "python3 -m zipfile -h", "exitCode": 0 },
+    { "row": "Index header", "expected": "ID | Title | Status | Implemented by | Date first added | Former path", "actual": "matches", "evidence": "docs/specs/index.md line 5" },
+    { "row": "Existing failing tests", "expected": "none", "actual": "one pre-existing tests/markdown.test.ts failure; all older spec tests pass. No design-changing contradiction; do not repair unrelated code", "evidence": "baseline below" }
+  ],
+  "baseline": {
+    "unit": {
+      "command": "node --experimental-strip-types --test tests/*.test.ts",
+      "exitCode": 1,
+      "tests": 131,
+      "passed": 129,
+      "failed": 1,
+      "skipped": 1,
+      "failures": ["tests/markdown.test.ts:184 session recap predicate, explain gate, known.md, tier map"],
+      "assertion": "tests/markdown.test.ts:191 explainAfterTurn(['a.ts'], false): false !== true",
+      "log": "/tmp/spec0019-planning/unit-baseline.log"
+    },
+    "specNodeCommandTemplate": "node --experimental-strip-types --test docs/specs/<directory>/*.ts (one separate invocation per directory)",
+    "specNodeSuites": [
+      { "directory": "SPEC-0005-configure-production-harness.tests", "tests": 7, "passed": 7, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0006-translate-specs-with-sol.tests", "tests": 39, "passed": 39, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0009-migrate-to-gpt6.tests", "tests": 13, "passed": 13, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0010-make-pi-ready-for-spec-development.tests", "tests": 42, "passed": 42, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0011-make-explain-a-learning-aid-again.tests", "tests": 23, "passed": 23, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0014-complete-the-codebase-map.tests", "tests": 11, "passed": 11, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0015-move-to-gpt-6-1-sol-and-run-the-pipeline-from-chat.tests", "tests": 22, "passed": 22, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0018-run-implement-spec-from-any-repo.tests", "tests": 26, "passed": 26, "failed": 0, "exitCode": 0 },
+      { "directory": "SPEC-0019-land-runs-and-summarize-every-exit.tests", "tests": 16, "passed": 2, "failed": 14, "exitCode": 1, "note": "new unimplemented contract, separate from regression baseline" }
+    ],
+    "python": {
+      "command": "uv run --project tools/map pytest -q docs/specs/SPEC-0014-complete-the-codebase-map.tests/test_map_views.py",
+      "exitCode": 0,
+      "passed": 9,
+      "failed": 0
+    },
+    "newContractFailures": [
+      "install.test.ts: missing lib/install-spec.ts",
+      "land.test.ts: missing landReviewBranch export",
+      "preflight-gate.test.ts: missing gateRepairable export",
+      "done events carry where the run landed and where its summary is",
+      "a landed run says where it landed and links its summary; a kept branch still reads as a hand-off",
+      "a run that landed is a success without the stop sentence",
+      "a successful plan-only call is not an error and says how to continue",
+      "a failed run is still an error with the stop sentence, and points at its summary",
+      "the description says runs land on the current branch when it has not moved",
+      "a run whose spec and tests are uncommitted is refused before any branch, run directory or model call",
+      "a committed spec passes preflight; the run records where it started, then reaches planning",
+      "given a downloaded zip, a dry run reports the install and changes nothing",
+      "given a downloaded zip under ~, a real run installs and commits it, then runs from that commit",
+      "summary.test.ts: missing lib/run-summary.ts"
+    ],
+    "rawLogDirectory": "/tmp/spec0019-planning",
+    "perCommandResults": "/tmp/spec0019-planning/spec-baselines.json"
+  },
+  "planValidation": {
+    "interfaceSource": "/home/george-contis/src/pi-build/lib/plan.ts",
+    "matchesCheckoutLibPlan": true,
+    "verifyCount": 13,
+    "validatePlan": { "ok": true, "errors": [] },
+    "taskCount": 12,
+    "lunaTaskCount": 4,
+    "solTaskCount": 8,
+    "requirements": 68,
+    "verifyMapKeys": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
+  },
+  "acceptanceCommandTemplate": "node --experimental-strip-types --test --test-reporter=tap <test>",
+  "acceptanceBeforeImplementation": [
+    {
+      "task": "L01-preflight-gate",
+      "test": "docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.plan/preflight-gate.test.ts",
+      "undeclaredImports": [],
+      "exitCode": 1,
+      "reason": "missing declared gateRepairable export; behavioural assertions cannot run until exports exist",
+      "log": "/tmp/spec0019-planning/preflight-gate.test.ts.acceptance.log"
+    },
+    {
+      "task": "L02-landing",
+      "test": "docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.plan/landing.test.ts",
+      "undeclaredImports": [],
+      "exitCode": 1,
+      "reason": "missing declared landReviewBranch export; behavioural assertions cannot run until export exists",
+      "log": "/tmp/spec0019-planning/landing.test.ts.acceptance.log"
+    },
+    {
+      "task": "L03-summary",
+      "test": "docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.plan/summary.test.ts",
+      "undeclaredImports": [],
+      "exitCode": 1,
+      "reason": "missing lib/run-summary.ts; behavioural assertions cannot run until module exists",
+      "log": "/tmp/spec0019-planning/summary.test.ts.acceptance.log"
+    },
+    {
+      "task": "L04-progress",
+      "test": "docs/specs/SPEC-0019-land-runs-and-summarize-every-exit.plan/progress.test.ts",
+      "undeclaredImports": [],
+      "exitCode": 1,
+      "tests": 4,
+      "passed": 1,
+      "failed": 3,
+      "reason": "behavioural failures for new fields/validation/rendering; legacy unchanged-output assertion passes",
+      "log": "/tmp/spec0019-planning/progress.test.ts.acceptance.log"
+    }
+  ],
+  "repairRoundsUsed": 0,
+  "notExercised": [
+    "Actual implementation acceptance V1-V13 after code changes",
+    "Full model-driven run and landing",
+    "Deferred SPEC-0018 absent-.agent/missing-index handoff"
+  ],
+  "protectedDiff": "empty",
+  "implementationDiff": "empty"
+}
