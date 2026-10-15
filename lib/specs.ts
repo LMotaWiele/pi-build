@@ -2,14 +2,14 @@
 // Shared by bin/pi-rework and bin/pi-implement.
 
 export interface SpecRef {
-  id: string; // four digits
+  id: string;
   slug: string;
   file: string; // SPEC-0007-build-codebase-map.md
 }
 
 export type Resolution = { ok: true; spec: SpecRef } | { ok: false; error: string };
 
-const SPEC_FILE = /^SPEC-(\d{4})-([a-z0-9-]+)\.md$/;
+const SPEC_FILE = /^SPEC-([0-9A-Za-z]+)-([a-z0-9-]+)\.md$/;
 
 export function listSpecs(fileNames: string[]): SpecRef[] {
   return fileNames
@@ -23,9 +23,11 @@ export function listSpecs(fileNames: string[]): SpecRef[] {
 export function resolveSpec(fileNames: string[], query: string): Resolution {
   const specs = listSpecs(fileNames);
   const q = query.trim().replace(/^.*\//, "").replace(/\.md$/, "");
-  const id = q.match(/^(?:SPEC-)?(\d{1,4})$/)?.[1]?.padStart(4, "0");
-  const byFile = q.match(/^SPEC-(\d{4})-[a-z0-9-]+$/)?.[1];
-  const hits = specs.filter((s) => s.id === id || s.id === byFile || s.slug === q);
+  const idQuery = q.match(/^(?:SPEC-)?([0-9A-Za-z]+)$/i)?.[1];
+  const normalizedId = idQuery && /^\d{1,4}$/.test(idQuery) ? idQuery.padStart(4, "0") : idQuery;
+  const byFile = q.match(/^SPEC-([0-9A-Za-z]+)-[a-z0-9-]+$/i)?.[1];
+  const candidates = [normalizedId, byFile].filter((id): id is string => id !== undefined);
+  const hits = specs.filter((s) => candidates.some((id) => s.id.toLowerCase() === id.toLowerCase()) || s.slug === q);
   if (hits.length === 1) return { ok: true, spec: hits[0] };
   const list = specs.map((s) => `${s.id} ${s.slug}`).join(", ");
   if (hits.length > 1) return { ok: false, error: `"${query}" matches more than one spec: ${hits.map((s) => s.id).join(", ")}` };
@@ -54,7 +56,8 @@ export function markImplemented(
     const row = lines[i].replace(/\r?\n$/, "");
     if (!row.startsWith("|")) continue;
     const cells = [...row.matchAll(/\|([^|]*)/g)];
-    if (cells[0]?.[1].trim() === id && /^\d{4}$/.test(cells[0][1].trim())) matching.push(i);
+    const cellId = cells[0]?.[1].trim();
+    if (cellId && /^[0-9A-Za-z]+$/.test(cellId) && cellId.toLowerCase() === id.toLowerCase()) matching.push(i);
   }
   if (matching.length !== 1) throw new Error(`Expected exactly one index row for ${id}`);
   const indexRow = matching[0];

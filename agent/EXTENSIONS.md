@@ -41,7 +41,7 @@ The hold file is `~/.pi/agent/quota-hold.json` (override `PI_BUILD_QUOTA_HOLD`).
 
 ## Pipeline tool
 
-`extensions/pipeline.ts` owns the `implement_spec` tool and subscribes to no events.
+`extensions/pipeline.ts` owns the directly exposed (`exposure: "direct"`) `implement_spec` tool and subscribes to no events. The runner, libraries and settings belong to the installed harness; the session's git repository owns the spec, tests, worktrees and branch handoff. Failure reporting, including the stop-and-report sentence, stays local to the tool's description and non-handoff results, not prompt sections or guidelines.
 
 ## Invalidation budget
 

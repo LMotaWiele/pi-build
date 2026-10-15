@@ -55,12 +55,13 @@ type Tool = { execute: (...args: any[]) => Promise<any>; renderCall: (...args: a
 async function fixture(t: any, mode = "success") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-tool-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q", root]);
   fs.mkdirSync(path.join(root, "docs", "specs"), { recursive: true });
   fs.mkdirSync(path.join(root, "bin"));
   const script = path.join(root, "bin", "pi-implement");
   fs.writeFileSync(script, runner, { mode: 0o755 });
   const registered: Tool[] = [];
-  await pipelineExtension({ registerTool(tool: Tool) { registered.push(tool); } } as any);
+  await pipelineExtension({ registerTool(tool: Tool) { registered.push(tool); } } as any, { harnessRoot: root });
   assert.equal(registered.length, 1);
   const tool = registered[0];
   const previous = process.env.FAKE_PIPELINE_MODE;
@@ -103,7 +104,7 @@ test("registers implement_spec; updates stream before handoff, cleans environmen
     assert.match(updates.at(-1).content[0].text, /Running tasks/);
     assert.equal(updates.at(-1).details.cost.editor, 0.12);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "invocation.json"), "utf8")), {
-      cwd: root, args: ["0015", "--progress", "json", "--plan-only", "--resume"], env: [null, null, null],
+      cwd: root, args: ["0015", "--progress", "json", "--plan-only", "--resume", "--repo", fs.realpathSync(root)], env: [null, null, null],
     });
   } finally {
     fs.writeFileSync(path.join(root, "release"), "yes");

@@ -20,7 +20,8 @@ import { countVerifyChecks, pipelineThinking, taskOrder, undeclaredImports, vali
 import { childEnv, childPiArgs, testCommands, testEnv } from "../lib/pipeline.ts";
 import { childEventToProgress, finalText } from "../lib/progress.ts";
 
-const REPO = path.resolve(import.meta.dirname, "..");
+const HARNESS_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO = process.argv.includes("--repo") ? fs.realpathSync(argValue("--repo")) : HARNESS_ROOT;
 const BUDGET_TOKENS = 4000;
 const CODE_EXT = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx"]);
 const progressMode = process.argv.includes("--progress") && argValue("--progress") === "json";
@@ -312,7 +313,7 @@ function modelMatches(stored, pin) {
 }
 
 function holdStatus() {
-  const bin = path.join(REPO, "bin", "pi-continue");
+  const bin = path.join(HARNESS_ROOT, "bin", "pi-continue");
   try {
     const out = execFileSync(bin, ["--status"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return { code: 0, out };
@@ -322,7 +323,11 @@ function holdStatus() {
 }
 
 function resumeCommand(planPath, runDir) {
-  return `node --experimental-strip-types scripts/run-plan.mjs --plan ${planPath} --run-dir ${runDir} --resume`;
+  if (!process.argv.includes("--repo") && !process.argv.includes("--python-project")) {
+    return `node --experimental-strip-types scripts/run-plan.mjs --plan ${planPath} --run-dir ${runDir} --resume`;
+  }
+  return `node --experimental-strip-types ${JSON.stringify(path.join(HARNESS_ROOT, "scripts/run-plan.mjs"))} --plan ${JSON.stringify(path.resolve(REPO, planPath))} --run-dir ${JSON.stringify(runDir)} --repo ${JSON.stringify(REPO)}` +
+    (process.argv.includes("--python-project") ? ` --python-project ${JSON.stringify(argValue("--python-project"))}` : "") + " --resume";
 }
 
 function stopForHold(planPath, runDir, detail) {
@@ -480,7 +485,7 @@ const work = ensureWorktree(runDir, commit);
 const resultsFile = path.join(runDir, "results.jsonl");
 const done = new Set(readResults(resultsFile).map((row) => row.id));
 const settings = readSettings();
-const pythonProject = settings.pipeline?.pythonProject || "tools/map";
+const pythonProject = process.argv.includes("--python-project") ? argValue("--python-project") : settings.pipeline?.pythonProject || "tools/map";
 const luna = modelId(settings, "luna", "scout");
 const sol = modelId(settings, "sol", "escalate");
 if (!luna || !sol) fail("host settings have no Luna or Sol model id");
