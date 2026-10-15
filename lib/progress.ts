@@ -1,6 +1,6 @@
 // The JSONL contract between the pipeline runner and the chat tool. Child pi JSON
 // events are translated here; only ProgressEvent objects go on runner stdout.
-export type ProgressStage = "preflight" | "plan" | "gate" | "tasks" | "integration" | "grade" | "handoff" | "install" | "land";
+export type ProgressStage = "preflight" | "plan" | "gate" | "tasks" | "integration" | "grade" | "handoff" | "install" | "land" | "spec-tests";
 export type ProgressRole = "planner" | "editor" | "integration" | "other";
 
 export type ProgressEvent =
@@ -44,7 +44,7 @@ function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-const STAGES: readonly string[] = ["preflight", "plan", "gate", "tasks", "integration", "grade", "handoff", "install", "land"];
+const STAGES: readonly string[] = ["preflight", "plan", "gate", "tasks", "integration", "grade", "handoff", "install", "land", "spec-tests"];
 
 // A bad/stray stdout line must never turn into UI state.
 export function parseProgressLine(line: string): ProgressEvent | null {
