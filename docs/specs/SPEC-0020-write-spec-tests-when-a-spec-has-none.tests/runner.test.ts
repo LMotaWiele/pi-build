@@ -36,11 +36,16 @@ const body = {
   'write-failing': "import { test } from 'node:test'; import assert from 'node:assert/strict';\\nimport { add } from '../../../src/add.ts';\\ntest('V1', () => assert.equal(add(2, 3), 5));\\n",
   'write-passing': "import { test } from 'node:test'; import assert from 'node:assert/strict';\\ntest('V1', () => assert.equal(1, 1));\\n",
   'write-broken': "import { test } from 'node:test';\\ntest('V1', () => { (\\n",
-}[action];
+}[action === 'write-failing-committed' ? 'write-failing' : action];
 fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'v01-add.test.ts'), body);
 fs.writeFileSync(path.join(dir, 'MANUAL.md'), 'V2: needs Lucas to look at it\\n');
 fs.writeFileSync('README.md', 'edited by the test writer\\n');
+if (action === 'write-failing-committed') {
+  const { execFileSync } = require('node:child_process');
+  execFileSync('git', ['add', '--', dir]);
+  execFileSync('git', ['commit', '--only', '-m', 'tests committed by writer', '--', dir]);
+}
 `;
 
 function setup(t: any, actions: string[]) {
@@ -100,6 +105,23 @@ test("a downloaded spec without tests is installed, the test writer runs first, 
   assert.ok(writer.join(" ").includes("SPEC-0001-demo.tests") && writer.join(" ").includes("V2"), "the writer was asked for every check");
   assert.ok(planner, "planning ran after the tests were frozen");
   assert.match(fs.readFileSync(path.join(dir, "summary.md"), "utf8"), /fail-to-pass/);
+});
+
+test("an already committed test directory passes the gate without a duplicate commit, including on resume", (t) => {
+  const { env, runRoot, repo, source, calls } = setup(t, ["write-failing-committed", "fail", "fail"]);
+  const result = run([source, "--repo", repo], env);
+  assert.match(result.stderr, /planning failed/, result.stderr);
+  const { dir, meta } = onlyRun(runRoot, repo);
+  assert.equal(git(repo, "log", "-1", "--format=%s", meta.branch), "tests committed by writer");
+  assert.equal(git(repo, "rev-list", "--count", `${meta.base}..${meta.branch}`), "1");
+  const record = JSON.parse(fs.readFileSync(path.join(dir, "spec-tests.json"), "utf8"));
+  assert.deepEqual(record.files, [{ file: "docs/specs/SPEC-0001-demo.tests/v01-add.test.ts", before: "fail" }]);
+  assert.equal(git(repo, "show", `${meta.branch}:README.md`), "");
+  assert.equal(calls().length, 2, "the writer's commit did not stop planning");
+  const resumed = run(["1", "--repo", repo, "--resume"], env);
+  assert.match(resumed.stderr, /planning failed/, resumed.stderr);
+  assert.equal(calls().length, 3, "resume skips the completed test writer stage");
+  assert.equal(git(repo, "rev-list", "--count", `${meta.base}..${meta.branch}`), "1");
 });
 
 test("tests that pass before implementation, or do not parse, go back to the writer with the gate's errors", (t) => {

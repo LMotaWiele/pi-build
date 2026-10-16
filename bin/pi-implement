@@ -324,7 +324,10 @@ if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
     }
     // --only excludes unrelated index entries, including ignored .agent noise.
     git(work, "add", "--", testRel);
-    git(work, "commit", "--only", "-m", `spec tests: SPEC-${spec.id} (written by ${testWriter})`, "--", testRel);
+    // A writer may already have committed the tests; do not create an empty duplicate.
+    if (git(work, "diff", "--cached", "--name-only", "--", testRel)) {
+      git(work, "commit", "--only", "-m", `spec tests: SPEC-${spec.id} (written by ${testWriter})`, "--", testRel);
+    }
     write(specTestsPath, JSON.stringify({ writer: testWriter, rounds: round,
       files: before.map(({ file, passed }) => ({ file, before: passed ? "pass" : "fail" })),
       manual: manualEntries(manual) }, null, 2));
