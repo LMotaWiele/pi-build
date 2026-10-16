@@ -112,7 +112,8 @@ test("an already committed test directory passes the gate without a duplicate co
   const result = run([source, "--repo", repo], env);
   assert.match(result.stderr, /planning failed/, result.stderr);
   const { dir, meta } = onlyRun(runRoot, repo);
-  assert.equal(git(repo, "log", "-1", "--format=%s", meta.branch), "tests committed by writer");
+  // The writer's commit is folded into the pipeline's own tests-only commit.
+  assert.match(git(repo, "log", "-1", "--format=%s", meta.branch), /^spec tests: SPEC-0001/);
   assert.equal(git(repo, "rev-list", "--count", `${meta.base}..${meta.branch}`), "1");
   const record = JSON.parse(fs.readFileSync(path.join(dir, "spec-tests.json"), "utf8"));
   assert.deepEqual(record.files, [{ file: "docs/specs/SPEC-0001-demo.tests/v01-add.test.ts", before: "fail" }]);

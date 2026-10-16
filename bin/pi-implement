@@ -272,11 +272,20 @@ if (!flags.has("--resume")) {
 const specTestsPath = path.join(dir, "spec-tests.json");
 if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
   stage("spec-tests");
+  // The writer is a full session and may commit its work. Fold any commits on the run branch
+  // (its own, or ones an interrupted earlier run left) back into the working tree, so the
+  // outside-path discard below sees every change and the stage ends in one tests-only commit.
+  const stageBase = typeof metadata.base === "string" ? metadata.base : git(work, "rev-parse", "HEAD");
+  const foldCommits = () => {
+    if (git(work, "rev-parse", "HEAD") !== git(work, "rev-parse", stageBase)) git(work, "reset", "-q", "--mixed", stageBase);
+  };
+  foldCommits();
   let previousErrors = [];
   for (let round = 1; round <= 3; round++) {
     const written = await pi(work, testWriter, levels.planner,
       specTestsPrompt({ spec: specRel, testsDir: testRel, checks: check.checks, pythonProject, errors: previousErrors }),
       path.join(dir, `spec-tests-${round}.log`), path.join(dir, `spec-tests-${round}-telemetry.db`));
+    foldCommits();
     // Avoid rename folding here: both an outside source deletion and an outside
     // destination must be restored, even when the other side is inside tests.
     const dirty = execFileSync("git", ["-C", work, "status", "--porcelain", "--no-renames", "--untracked-files=all"], { encoding: "utf8" }).split("\n").filter(Boolean);
@@ -324,7 +333,7 @@ if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
     }
     // --only excludes unrelated index entries, including ignored .agent noise.
     git(work, "add", "--", testRel);
-    // A writer may already have committed the tests; do not create an empty duplicate.
+    // Writer commits were folded above; this guard only covers tests identical to the start commit.
     if (git(work, "diff", "--cached", "--name-only", "--", testRel)) {
       git(work, "commit", "--only", "-m", `spec tests: SPEC-${spec.id} (written by ${testWriter})`, "--", testRel);
     }

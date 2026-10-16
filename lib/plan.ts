@@ -173,3 +173,52 @@ export function undeclaredImports(testSource: string, interfaces: PlanInterface[
   }
   return [...found].sort();
 }
+
+export type ScheduleStep = { kind: "sol"; ids: string[] } | { kind: "luna"; id: string };
+
+// Dependency-respecting run order. Before each Luna task (in taskOrder), every Sol task it depends on,
+// directly or through other tasks, that is not done yet runs in one Sol step, in taskOrder. Sol tasks
+// no Luna task depends on are left for integration. Luna steps are kept even when done, so a resumed
+// run can replay their results.
+export function schedulePlan(plan: Plan, done: Set<string>): { steps: ScheduleStep[]; integration: string[] } {
+  const order = taskOrder(plan);
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const byId = new Map(plan.tasks.map((t) => [t.id, t]));
+  const scheduled = new Set<string>();
+  const steps: ScheduleStep[] = [];
+  const ancestors = (id: string): string[] => {
+    const seen = new Set<string>();
+    const stack = [...deps(plan, id)];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (seen.has(cur) || !byId.has(cur)) continue;
+      seen.add(cur);
+      stack.push(...deps(plan, cur));
+    }
+    return [...seen];
+  };
+  for (const id of order) {
+    if (byId.get(id)!.assignee !== "luna") continue;
+    const sol = ancestors(id)
+      .filter((a) => byId.get(a)!.assignee === "sol" && !scheduled.has(a) && !done.has(a))
+      .sort((a, b) => rank.get(a)! - rank.get(b)!);
+    if (sol.length) {
+      steps.push({ kind: "sol", ids: sol });
+      for (const s of sol) scheduled.add(s);
+    }
+    steps.push({ kind: "luna", id });
+  }
+  const integration = order.filter((id) => byId.get(id)!.assignee === "sol" && !scheduled.has(id) && !done.has(id));
+  return { steps, integration };
+}
+
+export function solTasksPrompt(input: { planFile: string; plan: Plan; ids: string[] }): string {
+  const tasks = input.ids.map((id) => input.plan.tasks.find((t) => t.id === id)!);
+  return [
+    `The plan is \`${input.planFile}\`. Implement only these Sol tasks, in this order; Luna tasks that run after you depend on them:`,
+    ...tasks.map((t) => `\n## ${t.id} (${t.file})\n${t.brief}`),
+    "",
+    "Do not implement any other task. Do not edit the spec tests or the plan's acceptance tests.",
+    "If a brief contradicts the repository or the spec, including its stop conditions, stop and explain the contradiction instead of working around it.",
+  ].join("\n");
+}

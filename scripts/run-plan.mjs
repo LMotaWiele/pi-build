@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
-// Run a Sol plan: one pi process per Luna task, then one Sol integration session.
+// Run a Sol plan in dependency order: before each Luna task, one Sol session for the Sol tasks it
+// depends on; one pi process per Luna task; then one Sol integration session for the remaining Sol tasks.
 // Flags stay before -p. A hold exits 75.
 //
 //   node --experimental-strip-types scripts/run-plan.mjs \
@@ -16,7 +17,7 @@ import { decide } from "../extensions/jev/adapter.ts";
 import { DIFFICULTY_QUESTIONS } from "../extensions/jev/questions-difficulty.ts";
 import { QUALITY_QUESTIONS } from "../extensions/jev/questions-quality.ts";
 import { checkConformance, parseUnifiedDiff } from "../lib/conformance.ts";
-import { countVerifyChecks, pipelineThinking, taskOrder, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { countVerifyChecks, pipelineThinking, schedulePlan, solTasksPrompt, undeclaredImports, validatePlan } from "../lib/plan.ts";
 import { childEnv, childPiArgs, testCommands, testEnv } from "../lib/pipeline.ts";
 import { childEventToProgress, finalText } from "../lib/progress.ts";
 
@@ -416,7 +417,7 @@ function solPrompt(planFile, resultsFile, commands, reportPath, specPath) {
   return [
     `The plan is \`${planFile}\`; per-task results are \`${resultsFile}\`. Run the typecheck and the spec and plan acceptance tests using these commands (from the worktree):`,
     ...commands.map((command) => `${command.cmd} ${command.args.map((arg) => JSON.stringify(arg)).join(" ")}`),
-    'Fix every failure, and implement every task assigned to "sol".',
+    'Fix every failure, and implement every task assigned to "sol" that the results file does not list yet.',
     `Write \`${reportPath}\` following §10 of \`${specPath}\`, including commands, results and any deviations.`,
     "",
     "You may not edit the spec tests. You may edit a plan acceptance test only if it contradicts the spec — record each such edit and why, because it is an error in your own plan.",
@@ -496,12 +497,61 @@ const specTests = plan.spec.replace(/\.md$/, ".tests");
 const protectedList = protectedPaths(plan);
 let pinChecked = done.size > 0;
 
-const ordered = taskOrder(plan)
-  .map((id) => plan.tasks.find((task) => task.id === id))
-  .filter((task) => task && task.assignee === "luna");
+const schedule = schedulePlan(plan, done);
+
+// Sol tasks that a Luna task depends on run first, in one Sol session per Luna task that needs them.
+async function runSolStep(ids) {
+  const held = holdStatus();
+  if (held.code === 75) stopForHold(planRel, runDir, held.out.trim() || "quota hold");
+  const tasks = ids.map((id) => plan.tasks.find((item) => item.id === id));
+  for (const task of tasks) emit({ type: "task_start", id: task.id, title: task.brief.split("\n")[0].slice(0, 120), model: sol });
+  const stepDir = path.join(runDir, "tasks", `sol-${ids[0]}`);
+  fs.mkdirSync(stepDir, { recursive: true });
+  const dbPath = path.join(stepDir, "telemetry.db");
+  const logPath = path.join(stepDir, "pi.log");
+  const env = childEnv(process.env, "integration", dbPath);
+  delete env.PI_OFFLINE;
+  const run = await runPiWithContinuation(sol, solThinking, solTasksPrompt({ planFile: planRel, plan, ids }), work, env, logPath,
+    path.join(stepDir, "session"), "integration", ids[0],
+    () => stopForHold(planRel, runDir, `${ids[0]} exited 75`));
+  if (run.code !== 0) emit({ type: "notice", text: `Sol step ${ids.join(", ")} exited ${run.code}` });
+  restoreProtected(work, commit, protectedList);
+  commitAll(work, `plan: ${ids.join(", ")}`);
+  const stats = inferenceStats(dbPath);
+  tasks.forEach((task, i) => {
+    const graded = task.acceptanceTest ? runTests(work, [task.acceptanceTest], pythonProject) : null;
+    const row = {
+      id: task.id,
+      assignee: "sol",
+      acceptance: graded ? (graded.code === 0 ? "pass" : "fail") : "n/a",
+      model: stats.model,
+      rounds: i === 0 ? stats.rounds : 0,
+      providerCost: i === 0 ? stats.cost : 0,
+      wallClockS: i === 0 ? run.wallS : 0,
+      exitCode: run.code,
+      step: ids,
+      solEdited: null,
+    };
+    appendResult(resultsFile, row);
+    emit({ type: "task_end", id: task.id, pass: row.acceptance !== "fail", rounds: row.rounds, cost: row.providerCost });
+  });
+}
 
 emit({ type: "stage", stage: "tasks" });
-for (const task of ordered) {
+{
+  const lunaCount = plan.tasks.filter((task) => task.assignee === "luna").length;
+  const solBefore = schedule.steps.reduce((n, step) => n + (step.kind === "sol" ? step.ids.length : 0), 0);
+  emit({ type: "notice", text: `${plan.tasks.length} tasks (${lunaCount} Luna, ${plan.tasks.length - lunaCount} Sol): ${solBefore} Sol tasks run before the Luna tasks that need them, ${schedule.integration.length} in integration` });
+}
+let solStepRan = false;
+for (const step of schedule.steps) {
+  if (step.kind === "sol") {
+    await runSolStep(step.ids);
+    checkInterrupted();
+    solStepRan = true;
+    continue;
+  }
+  const task = plan.tasks.find((item) => item.id === step.id);
   const title = task.brief.split("\n")[0].slice(0, 120);
   emit({ type: "task_start", id: task.id, title, model: luna });
   if (resume && done.has(task.id)) {
@@ -516,7 +566,16 @@ for (const task of ordered) {
   if (!fs.existsSync(testAbs)) fail(`missing acceptance test ${task.acceptanceTest}`);
   const testSource = fs.readFileSync(testAbs, "utf8");
   const before = runTests(work, [task.acceptanceTest], pythonProject);
-  if (before.code === 0) fail(`${task.id} acceptance test already passes at ${commit}. The plan gate failed.`);
+  if (before.code === 0) {
+    if (!solStepRan) fail(`${task.id} acceptance test already passes at ${commit}. The plan gate failed.`);
+    // A Sol step before this task already satisfied it; record that instead of spending a Luna session.
+    const row = { id: task.id, assignee: "luna", acceptance: "pass", model: null, rounds: 0, providerCost: 0, wallClockS: 0,
+      exitCode: null, satisfiedBy: "an earlier Sol step", solEdited: null };
+    appendResult(resultsFile, row);
+    emit({ type: "notice", text: `${task.id} already passes after an earlier Sol step; Luna not run` });
+    emit({ type: "task_end", id: task.id, pass: true, rounds: 0, cost: 0 });
+    continue;
+  }
   emit({ type: "notice", text: `${task.id} acceptance gate passed (test fails before implementation)` });
   const anchors = {
     ...difficultyAnchors(task, plan, work, commit, testSource),
