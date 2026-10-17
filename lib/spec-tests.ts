@@ -82,9 +82,10 @@ export function pathsOutside(dirty: string[], dir: string): string[] {
   return outside;
 }
 
-export function specTestsPrompt(input: { spec: string; testsDir: string; checks: number; pythonProject: string | null; errors?: string[] }): string {
+export function specTestsPrompt(input: { spec: string; testsDir: string; checks: number; pythonProject: string | null; pythonCommand?: string | null; errors?: string[] }): string {
   const checks = Array.from({ length: input.checks }, (_, i) => `V${i + 1}`).join(", ");
-  const runners = `Run Node tests with: node --experimental-strip-types --test${input.pythonProject ? `\nRun Python tests with: uv run --project ${input.pythonProject} pytest` : ""}`;
+  const python = input.pythonCommand ?? (input.pythonProject ? `uv run --project ${input.pythonProject} pytest -q` : null);
+  const runners = `Run Node tests with: node --experimental-strip-types --test${python ? `\nWrite Python tests as pytest files named test_v<digits>_<what>.py (for example test_v01_check.py) and run them with: ${python} <file>. Never wrap a Python test in a Node test.` : ""}`;
   return `Write tests for the specification at ${input.spec}. Put all files in ${input.testsDir}.\n\nChecks to cover individually: ${checks || "(none)"}. Name automated test files with the check number, using v<digits> (for example v01-check.test.ts); V1 and V10 are distinct. For any check that cannot be automated, add a MANUAL.md line such as V2: needs a model-driven run, with a non-empty reason.\n\n${runners}\n\nTests for newly required behaviour must fail before implementation; tests for preserved behaviour may pass. At least one test must fail. Use temporary directories for filesystem tests. Use no models and no network. Read the spec and repository only; do not read a plan. Do not edit outside ${input.testsDir}. Do not commit; the pipeline commits the tests. Do not implement anything.${input.errors?.length ? `\n\nThe previous attempt was rejected for these reasons:\n${input.errors.map((e) => `- ${e}`).join("\n")}` : ""}`;
 }
 

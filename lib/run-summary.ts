@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export function buildSummary(input: {
@@ -109,12 +109,13 @@ export function buildSummary(input: {
       const row: any = db.prepare("SELECT COUNT(*) AS calls, COALESCE(SUM(prompt_tokens),0) AS prompt, COALESCE(SUM(completion_tokens),0) AS completion, COALESCE(SUM(cost_usd),0) AS cost FROM inference_calls").get();
       const n = Number(row.calls), p = Number(row.prompt), c = Number(row.completion), dollars = Number(row.cost);
       calls += n; prompt += p; completion += c; cost += dollars;
+      // tasks/<id>/telemetry.db is named by its task directory (a Luna task, or sol-<first id> for a Sol step).
       const fileName = basename(file);
-      const name = fileName.endsWith("-telemetry.db") ? fileName.slice(0, -"-telemetry.db".length) : fileName;
+      const name = fileName.endsWith("-telemetry.db") ? fileName.slice(0, -"-telemetry.db".length) : basename(dirname(file));
       lines.push(`| ${name} | ${n} | ${p} | ${c} | $${dollars.toFixed(2)} |`);
     } catch {
       // An unreadable or incompatible database is surfaced as missing evidence.
-      lines.push(`| ${basename(file).replace(/-telemetry\.db$/, "")} | missing | missing | missing | missing |`);
+      lines.push(`| ${basename(file) === "telemetry.db" ? basename(dirname(file)) : basename(file).replace(/-telemetry\.db$/, "")} | missing | missing | missing | missing |`);
     } finally { db?.close(); }
   }
   lines.push(`| Total | ${calls} | ${prompt} | ${completion} | $${cost.toFixed(2)} |`);

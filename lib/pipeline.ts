@@ -160,12 +160,18 @@ const PY_TEST = /(?:^|\/)(?:test_[^/]*|[^/]*_test)\.py$/;
 
 // One command per runner: all Node test files together, all Python test files together.
 // Files matching neither are ignored.
-export function testCommands(files: string[], opts: { pythonProject: string }): Command[] {
+// python/pythonPath: run pytest with the project's own interpreter, the worktree's sources first on the path.
+// Without them, Python tests run through `uv run --project`, as before.
+export function testCommands(files: string[], opts: { pythonProject: string; python?: string | null; pythonPath?: string | null }): Command[] {
   const node = files.filter((f) => NODE_TEST.test(f)).sort();
   const py = files.filter((f) => PY_TEST.test(f)).sort();
   const out: Command[] = [];
   if (node.length) out.push({ cmd: "node", args: ["--experimental-strip-types", "--test", ...node] });
-  if (py.length) out.push({ cmd: "uv", args: ["run", "--project", opts.pythonProject, "pytest", "-q", ...py] });
+  if (py.length) {
+    out.push(opts.python
+      ? { cmd: "env", args: [`PYTHONPATH=${opts.pythonPath || opts.pythonProject || "."}`, opts.python, "-m", "pytest", "-q", ...py] }
+      : { cmd: "uv", args: ["run", "--project", opts.pythonProject, "pytest", "-q", ...py] });
+  }
   return out;
 }
 
@@ -300,4 +306,43 @@ export function preflight(input: PreflightInput): Preflight {
     }
   }
   return { checks, blocking, warnings };
+}
+
+// The project's interpreter for Python tests: .pi/pipeline.json "python", else <target>/<pythonProject>/.venv/bin/python.
+// pythonPath is relative to a worktree root: <pythonProject>/src when that exists, else <pythonProject>.
+export function pythonRunnerFor(input: { target: string; pythonProject: string | null }): { python: string; pythonPath: string } | null {
+  if (input.pythonProject === null) return null;
+  let python: string | null = null;
+  try {
+    const config = JSON.parse(readFileSync(join(input.target, ".pi/pipeline.json"), "utf8")) as { python?: unknown };
+    if (typeof config?.python === "string" && config.python) python = resolve(input.target, config.python);
+  } catch { /* no target config */ }
+  if (!python) {
+    const venv = join(input.target, input.pythonProject, ".venv", "bin", "python");
+    if (existsSync(venv)) python = venv;
+  }
+  if (!python) return null;
+  const src = join(input.pythonProject, "src");
+  return { python, pythonPath: existsSync(join(input.target, src)) ? src.replace(/^\.\//, "") : input.pythonProject };
+}
+
+// Prepended to every child session's prompt.
+export function pipelineContext(input: { target: string; baseBranch: string | null }): string {
+  const branch = input.baseBranch ? `\`${input.baseBranch}\`` : "the branch the run started on";
+  return [
+    `You are running inside the pi-build delegated pipeline, in a separate git worktree of ${input.target}, not in its main checkout.`,
+    `The pipeline owns git: it commits your work and, after the final grade, fast-forwards ${branch}. Do not commit, create, switch or push branches.`,
+    "Instructions in the spec about committing on a branch, pushing or which checkout to use are satisfied by the pipeline; they are not a reason to stop.",
+    "Run tests only with the exact commands you are given. Do not create a virtual environment or install packages.",
+  ].join("\n");
+}
+
+// A Sol step's verdict: the last line of the form "STATUS: DONE" or "STATUS: BLOCKED: <reason>".
+export function parseStepStatus(text: string): { done: boolean; reason: string } {
+  const lines = text.split("\n").map((l) => l.replace(/[*_`]/g, "").trim()).filter((l) => /^STATUS:/i.test(l));
+  const last = lines.at(-1);
+  if (!last) return { done: false, reason: "no STATUS line in the step's final message" };
+  if (/^STATUS:\s*DONE\b/i.test(last)) return { done: true, reason: "" };
+  const blocked = last.match(/^STATUS:\s*BLOCKED:?\s*(.*)$/i);
+  return { done: false, reason: blocked?.[1]?.trim() || last };
 }

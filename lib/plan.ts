@@ -220,5 +220,20 @@ export function solTasksPrompt(input: { planFile: string; plan: Plan; ids: strin
     "",
     "Do not implement any other task. Do not edit the spec tests or the plan's acceptance tests.",
     "If a brief contradicts the repository or the spec, including its stop conditions, stop and explain the contradiction instead of working around it.",
+    "End your final message with exactly one line: `STATUS: DONE` when every task listed above is implemented, or `STATUS: BLOCKED: <reason>` otherwise. Tasks after you only run on DONE.",
   ].join("\n");
+}
+
+// The first task in `failed` that `id` depends on, directly or through other tasks; null when none.
+export function failedPrerequisite(plan: Plan, id: string, failed: Set<string>): string | null {
+  const seen = new Set<string>();
+  const stack = [...deps(plan, id)];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    if (failed.has(cur)) return cur;
+    stack.push(...deps(plan, cur));
+  }
+  return null;
 }

@@ -17,8 +17,8 @@ import { decide } from "../extensions/jev/adapter.ts";
 import { DIFFICULTY_QUESTIONS } from "../extensions/jev/questions-difficulty.ts";
 import { QUALITY_QUESTIONS } from "../extensions/jev/questions-quality.ts";
 import { checkConformance, parseUnifiedDiff } from "../lib/conformance.ts";
-import { countVerifyChecks, pipelineThinking, schedulePlan, solTasksPrompt, undeclaredImports, validatePlan } from "../lib/plan.ts";
-import { childEnv, childPiArgs, testCommands, testEnv } from "../lib/pipeline.ts";
+import { countVerifyChecks, failedPrerequisite, pipelineThinking, schedulePlan, solTasksPrompt, undeclaredImports, validatePlan } from "../lib/plan.ts";
+import { childEnv, childPiArgs, parseStepStatus, testCommands, testEnv } from "../lib/pipeline.ts";
 import { childEventToProgress, finalText } from "../lib/progress.ts";
 
 const HARNESS_ROOT = path.resolve(import.meta.dirname, "..");
@@ -142,6 +142,8 @@ function fitState(kept, trailing) {
 }
 
 async function battery(list, state) {
+  // Tests run the runner without a network; the battery is advisory telemetry, not a gate.
+  if (process.env.PI_BUILD_SKIP_BATTERY === "1") return {};
   const answers = await decide(state, questionsOf(list));
   const out = {};
   for (const question of list) out[question.id] = answerOf(answers[question.id]);
@@ -276,7 +278,7 @@ function collectTestFiles(cwd, files) {
 }
 
 function runTests(cwd, files, pythonProject) {
-  const commands = testCommands(collectTestFiles(cwd, files), { pythonProject });
+  const commands = testCommands(collectTestFiles(cwd, files), { pythonProject, ...pythonRunner });
   if (!commands.length) return { code: 1, out: "no recognized test files\n" };
   let code = 0;
   let out = "";
@@ -396,7 +398,7 @@ async function runPiWithContinuation(model, thinking, prompt, work, env, logPath
   let seen = continuationCount(sessionDir);
   let wallS = 0;
   for (let attempts = 0; attempts < 10; attempts++) {
-    const run = await runPi(childPiArgs({ model, thinking, prompt: attempts ? "continue" : prompt,
+    const run = await runPi(childPiArgs({ model, thinking, prompt: attempts ? "continue" : withContext(prompt),
       sessionDir, continuing: attempts > 0 }), work, env, logPath, role, taskId, attempts > 0);
     checkInterrupted();
     wallS += run.wallS;
@@ -413,11 +415,19 @@ function lunaPrompt(task) {
   return `${task.brief}\n\nAcceptance test: ${task.acceptanceTest}\nyou may run this test; you may not edit it`;
 }
 
-function solPrompt(planFile, resultsFile, commands, reportPath, specPath) {
+// bin/pi-implement writes the pipeline context for this run; every child prompt starts with it.
+function withContext(prompt) {
+  const file = path.join(path.resolve(argValue("--run-dir") || "."), "context.txt");
+  const context = fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim() : "";
+  return context ? `${context}\n\n${prompt}` : prompt;
+}
+
+function solPrompt(planFile, resultsFile, commands, reportPath, specPath, deferred = []) {
   return [
     `The plan is \`${planFile}\`; per-task results are \`${resultsFile}\`. Run the typecheck and the spec and plan acceptance tests using these commands (from the worktree):`,
     ...commands.map((command) => `${command.cmd} ${command.args.map((arg) => JSON.stringify(arg)).join(" ")}`),
     'Fix every failure, and implement every task assigned to "sol" that the results file does not list yet.',
+    ...(deferred.length ? [`These tasks did not run because a task they depend on failed; implement them after fixing that failure: ${deferred.map((d) => `${d.id} (depends on ${d.on})`).join(", ")}.`] : []),
     `Write \`${reportPath}\` following §10 of \`${specPath}\`, including commands, results and any deviations.`,
     "",
     "You may not edit the spec tests. You may edit a plan acceptance test only if it contradicts the spec — record each such edit and why, because it is an error in your own plan.",
@@ -487,6 +497,8 @@ const resultsFile = path.join(runDir, "results.jsonl");
 const done = new Set(readResults(resultsFile).map((row) => row.id));
 const settings = readSettings();
 const pythonProject = process.argv.includes("--python-project") ? argValue("--python-project") : settings.pipeline?.pythonProject || "tools/map";
+// The project's own interpreter for Python tests, passed by bin/pi-implement; without it, `uv run` as before.
+const pythonRunner = process.argv.includes("--python") ? { python: argValue("--python"), pythonPath: argValue("--python-path") || null } : {};
 const luna = modelId(settings, "luna", "scout");
 const sol = modelId(settings, "sol", "escalate");
 if (!luna || !sol) fail("host settings have no Luna or Sol model id");
@@ -498,9 +510,21 @@ const protectedList = protectedPaths(plan);
 let pinChecked = done.size > 0;
 
 const schedule = schedulePlan(plan, done);
+// Tasks whose acceptance failed, including in an earlier run being resumed; their dependents are deferred.
+const failed = new Set(readResults(resultsFile).filter((row) => row.acceptance === "fail").map((row) => row.id));
+const deferred = [];
+function deferIfBlocked(id) {
+  const on = failedPrerequisite(plan, id, failed);
+  if (!on) return false;
+  deferred.push({ id, on });
+  emit({ type: "notice", text: `${id} deferred to integration: it depends on ${on}, which failed` });
+  return true;
+}
 
 // Sol tasks that a Luna task depends on run first, in one Sol session per Luna task that needs them.
-async function runSolStep(ids) {
+async function runSolStep(allIds) {
+  const ids = allIds.filter((id) => !deferIfBlocked(id));
+  if (!ids.length) return;
   const held = holdStatus();
   if (held.code === 75) stopForHold(planRel, runDir, held.out.trim() || "quota hold");
   const tasks = ids.map((id) => plan.tasks.find((item) => item.id === id));
@@ -516,6 +540,12 @@ async function runSolStep(ids) {
     () => stopForHold(planRel, runDir, `${ids[0]} exited 75`));
   if (run.code !== 0) emit({ type: "notice", text: `Sol step ${ids.join(", ")} exited ${run.code}` });
   restoreProtected(work, commit, protectedList);
+  // Only DONE counts. A blocked or unreported step records nothing, so a resume runs it again.
+  const status = parseStepStatus(fs.existsSync(logPath) ? finalText(fs.readFileSync(logPath, "utf8")) : "");
+  if (!status.done) {
+    fs.writeFileSync(path.join(stepDir, "blocked.json"), `${JSON.stringify({ ids, exitCode: run.code, reason: status.reason }, null, 2)}\n`);
+    fail(`Sol step ${ids.join(", ")} blocked: ${status.reason}. Nothing after it ran; fix the cause, then resume.`);
+  }
   commitAll(work, `plan: ${ids.join(", ")}`);
   const stats = inferenceStats(dbPath);
   tasks.forEach((task, i) => {
@@ -533,6 +563,7 @@ async function runSolStep(ids) {
       solEdited: null,
     };
     appendResult(resultsFile, row);
+    if (row.acceptance === "fail") failed.add(task.id);
     emit({ type: "task_end", id: task.id, pass: row.acceptance !== "fail", rounds: row.rounds, cost: row.providerCost });
   });
 }
@@ -552,6 +583,7 @@ for (const step of schedule.steps) {
     continue;
   }
   const task = plan.tasks.find((item) => item.id === step.id);
+  if (!(resume && done.has(task.id)) && deferIfBlocked(task.id)) continue;
   const title = task.brief.split("\n")[0].slice(0, 120);
   emit({ type: "task_start", id: task.id, title, model: luna });
   if (resume && done.has(task.id)) {
@@ -650,7 +682,10 @@ for (const step of schedule.steps) {
   appendResult(resultsFile, row);
   fs.writeFileSync(path.join(taskDir, "row.json"), `${JSON.stringify(row, null, 2)}\n`);
   emit({ type: "task_end", id: task.id, pass: graded.code === 0, rounds: stats.rounds, cost: stats.cost });
-  if (graded.code !== 0) emit({ type: "notice", text: `${task.id} acceptance failed: ${graded.out.slice(0, 240)}` });
+  if (graded.code !== 0) {
+    failed.add(task.id);
+    emit({ type: "notice", text: `${task.id} acceptance failed: ${graded.out.slice(0, 240)}` });
+  }
 }
 
 emit({ type: "stage", stage: "integration" });
@@ -664,8 +699,8 @@ if (!(resume && fs.existsSync(integrationMarker))) {
   const env = childEnv(process.env, "integration", dbPath);
   delete env.PI_OFFLINE;
   const tests = [specTests, ...plan.tasks.map((task) => task.acceptanceTest).filter(Boolean)];
-  const commands = testCommands(collectTestFiles(work, tests), { pythonProject });
-  const prompt = solPrompt(planRel, resultsFile, commands, path.join(runDir, "report.md"), plan.spec);
+  const commands = testCommands(collectTestFiles(work, tests), { pythonProject, ...pythonRunner });
+  const prompt = solPrompt(planRel, resultsFile, commands, path.join(runDir, "report.md"), plan.spec, deferred);
   const run = await runPiWithContinuation(sol, solThinking, prompt, work, env, logPath,
     path.join(runDir, "integration-session"), "integration", undefined,
     () => stopForHold(planRel, runDir, "integration exited 75"));

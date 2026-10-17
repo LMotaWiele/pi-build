@@ -8,7 +8,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { countVerifyChecks, pipelineThinking, undeclaredImports, validatePlan } from "../lib/plan.ts";
-import { childEnv, childPiArgs, costByRole, gateRepairable, landReviewBranch, pipelineRunRoot, planPrompt, preflight, pythonProjectFor, runDirBase, targetRepo, testCommands, testEnv, uncommittedSpecPaths } from "../lib/pipeline.ts";
+import { childEnv, childPiArgs, costByRole, gateRepairable, landReviewBranch, pipelineContext, pipelineRunRoot, planPrompt, preflight, pythonProjectFor, pythonRunnerFor, runDirBase, targetRepo, testCommands, testEnv, uncommittedSpecPaths } from "../lib/pipeline.ts";
 import { buildSummary } from "../lib/run-summary.ts";
 import { isTestFile, manualEntries, parseErrors, pathsOutside, specTestsGate, specTestsPrompt } from "../lib/spec-tests.ts";
 import { installSpec } from "../lib/install-spec.ts";
@@ -76,7 +76,7 @@ const filesIn = (dir, prefix = "") => fs.existsSync(dir) ? fs.readdirSync(dir, {
   return entry.isDirectory() ? filesIn(path.join(dir, entry.name), rel) : [rel];
 }) : [];
 async function tests(work, files, pythonProject) {
-  const cmds = testCommands(files, { pythonProject: pythonProject ?? "" });
+  const cmds = testCommands(files, { pythonProject: pythonProject ?? "", ...(pythonRunner ?? {}) });
   if (!cmds.length) return { code: 1, output: "no recognized test files" };
   const results = [];
   for (const { cmd, args } of cmds) {
@@ -140,7 +140,10 @@ function streamed(cmd, args, cwd, { env = process.env, log, role, forward = fals
     if (terminated) child.kill("SIGTERM");
   });
 }
+// Set once the run directory exists; every child prompt starts with it.
+let runContext = "";
 async function pi(work, model, thinking, prompt, log, db) {
+  if (runContext) prompt = `${runContext}\n\n${prompt}`;
   const result = await streamed("pi", childPiArgs({ model, thinking, prompt, sessionDir: path.join(path.dirname(log), `${path.basename(log, ".log")}-session`) }), work,
     { env: childEnv(process.env, "planner", db), log, role: "planner" });
   interrupted();
@@ -211,6 +214,8 @@ const planRel = path.join("docs/specs", paths.plan);
 const dirty = execFileSync("git", ["-C", target, "status", "--porcelain"], { encoding: "utf8" }).split("\n").filter(Boolean);
 const settings = readPiSettings();
 const pythonProject = pythonProjectFor({ target, harnessRoot, settings });
+// Python tests run with the target's own interpreter (its .venv), never an environment built for the worktree.
+const pythonRunner = pythonRunnerFor({ target, pythonProject });
 const suppliedTests = fs.existsSync(path.join(target, testRel));
 const writeTests = settings.pipeline?.writeSpecTests !== false;
 const testFiles = filesIn(path.join(target, testRel), testRel);
@@ -226,18 +231,24 @@ if (flags.has("--dry-run")) {
     emit({ type: "notice", text });
   }
 }
+if (pythonRunner) {
+  try { execFileSync(pythonRunner.python, ["-c", "import pytest"], { stdio: ["ignore", "pipe", "pipe"] }); }
+  catch { check.blocking.push(`${pythonRunner.python} cannot import pytest; install the project's test dependencies there (for example pip install -e '.[dev]')`); }
+} else if (pythonProject !== null) {
+  check.warnings.push(`no .venv in ${path.join(target, pythonProject)}; Python tests would run through \`uv run\`, in an environment built from pyproject.toml without dev extras. Set "python" in .pi/pipeline.json to use an existing interpreter`);
+}
 for (const warning of check.warnings) { console.error(`warning: ${warning}`); emit({ type: "notice", text: warning }); }
 if (check.blocking.length) exit(check.blocking.join("\n"), check.blocking.some((s) => s.includes("quota hold")) ? 75 : 2);
 const planner = settings.routing?.tiers?.escalate || "openai-codex/gpt-6-sol";
 const editor = settings.routing?.tiers?.scout || "openai-codex/gpt-6-luna";
 const testWriter = settings.pipeline?.testWriter || planner;
 const levels = pipelineThinking(settings);
-const commands = testCommands(testFiles, { pythonProject: pythonProject ?? "" });
+const commands = testCommands(testFiles, { pythonProject: pythonProject ?? "", ...(pythonRunner ?? {}) });
 const base = runDirBase({ runRoot: pipelineRunRoot(settings, os.homedir()), target, harnessRoot, id: spec.id, slug: spec.slug });
 if (flags.has("--dry-run")) {
   const text = JSON.stringify({ spec: specRel, tests: testRel, plan: planRel, runRecord: paths.runRecord,
     checks: check.checks, planner: `${planner} at ${levels.planner}`, editor: `${editor} at ${levels.editor}`, commands,
-    target, harnessRoot, runDir: base, pythonProject,
+    target, harnessRoot, runDir: base, pythonProject, python: pythonRunner?.python ?? null,
     specTests: suppliedTests ? "supplied" : `to be written by ${testWriter} at ${levels.planner}` }, null, 2);
   if (progress) { process.stderr.write(`${text}\n`); finish(true, "dry run complete"); }
   else console.log(text);
@@ -267,6 +278,23 @@ if (!flags.has("--resume")) {
   git(target, "branch", branch, metadata.base);
   git(target, "worktree", "add", work, branch);
 }
+runContext = pipelineContext({ target, baseBranch: metadata.baseBranch ?? null });
+write(path.join(dir, "context.txt"), `${runContext}\n`);
+// The tests must import this run's code. An editable install of the main checkout would otherwise win.
+if (pythonRunner) {
+  const srcDir = path.join(work, pythonRunner.pythonPath);
+  const pkg = fs.existsSync(srcDir) ? fs.readdirSync(srcDir).find((name) => fs.existsSync(path.join(srcDir, name, "__init__.py"))) : undefined;
+  if (pkg) {
+    let where = "";
+    try {
+      where = execFileSync("env", [`PYTHONPATH=${pythonRunner.pythonPath}`, pythonRunner.python, "-c", `import ${pkg}; print(${pkg}.__file__)`],
+        { cwd: work, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    } catch (err) { where = String(err?.stderr || err).trim(); }
+    if (!fs.existsSync(where) || !fs.realpathSync(where).startsWith(`${fs.realpathSync(work)}${path.sep}`)) {
+      exit(`Python tests in this run would import ${pkg} from ${where || "nowhere"}, not from the run's worktree ${work}. Check the interpreter's site-packages for an install that shadows PYTHONPATH.`, 2);
+    }
+  }
+}
 // Use saved metadata, not the target's current tests/settings, when resuming.
 // Markerless legacy runs must not speculatively start a new writing stage.
 const specTestsPath = path.join(dir, "spec-tests.json");
@@ -283,7 +311,8 @@ if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
   let previousErrors = [];
   for (let round = 1; round <= 3; round++) {
     const written = await pi(work, testWriter, levels.planner,
-      specTestsPrompt({ spec: specRel, testsDir: testRel, checks: check.checks, pythonProject, errors: previousErrors }),
+      specTestsPrompt({ spec: specRel, testsDir: testRel, checks: check.checks, pythonProject, errors: previousErrors,
+        pythonCommand: pythonRunner ? `env PYTHONPATH=${pythonRunner.pythonPath} ${pythonRunner.python} -m pytest -q` : null }),
       path.join(dir, `spec-tests-${round}.log`), path.join(dir, `spec-tests-${round}-telemetry.db`));
     foldCommits();
     // Avoid rename folding here: both an outside source deletion and an outside
@@ -314,6 +343,13 @@ if (metadata.specTests === "generated" && !fs.existsSync(specTestsPath)) {
     const manualPath = path.join(work, testRel, "MANUAL.md");
     const manual = fs.existsSync(manualPath) ? read(manualPath) : null;
     const syntaxErrors = parseErrors(work, files);
+    // Python tests must be pytest files the runner recognises, not Node wrappers around pytest.
+    for (const file of automated.filter((file) => !file.endsWith(".py"))) {
+      if (/\bpytest\b/.test(read(path.join(work, file)))) syntaxErrors.push(`${file}: wraps pytest in a Node test; write it as test_v<NN>_<what>.py instead`);
+    }
+    for (const file of files.filter((file) => file.endsWith(".py") && !isTestFile(file))) {
+      if (/^\s*def test_/m.test(read(path.join(work, file)))) syntaxErrors.push(`${file}: Python test files must be named test_v<NN>_<what>.py`);
+    }
     if (pythonProject === null) {
       for (const file of automated.filter((file) => file.endsWith(".py"))) syntaxErrors.push(`${file}: Python tests but no Python project; add .pi/pipeline.json with pythonProject`);
     }
@@ -412,7 +448,8 @@ if (flags.has("--plan-only")) {
 }
 // The runner owns task and integration stages; its JSONL stream is forwarded as received.
 const runner = await streamed(process.execPath, ["--experimental-strip-types", path.join(harnessRoot, "scripts/run-plan.mjs"),
-  "--plan", workPlan, "--run-dir", dir, "--repo", work, "--python-project", pythonProject ?? "", "--progress", "json",
+  "--plan", workPlan, "--run-dir", dir, "--repo", work, "--python-project", pythonProject ?? "",
+  ...(pythonRunner ? ["--python", pythonRunner.python, "--python-path", pythonRunner.pythonPath] : []), "--progress", "json",
   ...(flags.has("--resume") ? ["--resume"] : [])], work,
   { log: path.join(dir, "runner.log"), forward: true });
 interrupted();
